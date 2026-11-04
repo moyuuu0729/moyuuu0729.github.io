@@ -3,173 +3,456 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>手機友善簡單停車遊戲</title>
+<title>進階列車調度盤遊戲Demo</title>
 <style>
+  /* 基本頁面風格 */
   body {
-    font-family: Arial, sans-serif;
-    background: #e0f7fa;
-    margin: 0;
-    padding: 10px;
+    margin: 0; padding: 0;
+    background: #1a1a1a;
+    color: #eee;
+    font-family: "Microsoft JhengHei", Arial, sans-serif;
+    user-select: none;
     display: flex;
     flex-direction: column;
     align-items: center;
   }
-  h1 {
-    margin-bottom: 5px;
+  h2 {
+    margin: 15px 0 5px;
   }
-  #gameArea {
-    position: relative;
-    width: 90vw;
-    max-width: 400px;
-    height: 200px;
-    background: #a7d7f9;
-    border: 2px solid #2196f3;
-    margin-top: 10px;
-    border-radius: 8px;
+  #gameCanvas {
+    background: #222;
+    border-radius: 12px;
+    border: 3px solid #555;
+    margin-bottom: 10px;
+    display: block;
+    max-width: 100vw;
+    width: 700px;
+    height: 450px;
   }
-  #parkingSpot {
-    position: absolute;
-    bottom: 20px;
-    left: 40%;
-    width: 20%;
-    height: 60px;
-    background: #81c784;
-    border: 2px dashed #388e3c;
-    border-radius: 8px;
+  #controlPanel {
+    width: 700px;
+    max-width: 100vw;
+    padding: 10px 15px;
+    background: #292929;
+    border-radius: 12px;
+    box-sizing: border-box;
   }
-  #car {
-    position: absolute;
-    bottom: 30px;
-    left: 2%;
-    width: 15%;
-    height: 30px;
-    background: #f44336;
-    border-radius: 8px 8px 4px 4px;
-    transition: left 0.2s ease;
-  }
-  #message {
-    margin-top: 15px;
-    font-size: 18px;
-    font-weight: bold;
-    height: 24px;
-    color: #333;
-  }
-  #controls {
-    margin-top: 15px;
-    width: 90vw;
-    max-width: 400px;
+  #switchButtons {
+    margin-bottom: 10px;
     display: flex;
-    justify-content: space-around;
+    flex-wrap: wrap;
+    gap: 10px;
   }
-  button {
-    flex: 1;
-    margin: 0 6px;
-    padding: 12px 0;
-    font-size: 18px;
-    border-radius: 8px;
+  .switchBtn {
+    flex: 1 1 45%; /* 兩欄式布局 */
+    background: #2196f3;
     border: none;
-    background-color: #2196f3;
+    border-radius: 8px;
+    padding: 12px 0;
     color: white;
+    font-size: 18px;
+    cursor: pointer;
     user-select: none;
-    touch-action: manipulation;
-    transition: background-color 0.3s;
+    transition: background-color 0.25s ease;
   }
-  button:active {
-    background-color: #1769aa;
+  .switchBtn.active {
+    background: #f9a825;
+    color: #222;
   }
-  @media (hover: hover) and (pointer: fine) {
-    button:hover {
-      background-color: #1769aa;
-      cursor: pointer;
+  .switchBtn:active {
+    background: #1769aa;
+  }
+  #status {
+    background: #111;
+    padding: 10px;
+    border-radius: 8px;
+    min-height: 40px;
+    max-height: 100px;
+    overflow-y: auto;
+    font-size: 16px;
+    line-height: 1.3;
+    font-family: Consolas, monospace;
+    color: #e0e0e0;
+  }
+  @media (max-width: 720px) {
+    #gameCanvas, #controlPanel {
+      width: 95vw;
+    }
+    .switchBtn {
+      flex: 1 1 100%;
     }
   }
 </style>
 </head>
 <body>
 
-<h1>簡單停車遊戲</h1>
-<p>點擊「左移」「停車」「右移」按鈕控制車子停車。</p>
+<h2>進階列車調度盤遊戲 Demo</h2>
+<canvas id="gameCanvas" width="700" height="450"></canvas>
 
-<div id="gameArea">
-  <div id="parkingSpot"></div>
-  <div id="car"></div>
-</div>
-
-<div id="message"></div>
-
-<div id="controls">
-  <button id="leftBtn">左移</button>
-  <button id="stopBtn">停車</button>
-  <button id="rightBtn">右移</button>
+<div id="controlPanel" role="region" aria-label="分岔點控制面板">
+  <div id="switchButtons">
+    <!-- 按鈕動態產生 -->
+  </div>
+  <div id="status" aria-live="polite" aria-atomic="true">遊戲狀態更新會顯示在這裡...</div>
 </div>
 
 <script>
-  const car = document.getElementById('car');
-  const parkingSpot = document.getElementById('parkingSpot');
-  const message = document.getElementById('message');
+(() => {
+  // DOM 元素
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const switchButtonsDiv = document.getElementById("switchButtons");
+  const statusDiv = document.getElementById("status");
 
-  // 以 vw％為單位，方便響應式改動，這裡使用 pixel 值對應寬度百分比計算移動
-  const gameArea = document.getElementById('gameArea');
-  let gameAreaWidth = 0;
-  let carWidth = 0;
-  let parkingLeft = 0;
-  let parkingRight = 0;
+  // 遊戲參數
+  const W = canvas.width;
+  const H = canvas.height;
 
-  function updateSizes() {
-    gameAreaWidth = gameArea.clientWidth;
-    carWidth = car.clientWidth;
-    parkingLeft = parkingSpot.offsetLeft;
-    parkingRight = parkingLeft + parkingSpot.offsetWidth;
-  }
+  // 節點座標：可視為交叉點或車站
+  const nodes = {
+    A: { x: 80, y: 80 },
+    B: { x: 620, y: 80 },
+    C: { x: 350, y: 150 },
+    D: { x: 80, y: 370 },
+    E: { x: 620, y: 370 },
+    F: { x: 350, y: 300 },
+    G: { x: 350, y: 370 }
+  };
 
-  // 以 pixel 計算車子位置
-  let carPos = 0;
+  // 車站定義（部分節點作為車站）
+  const stations = ["A", "B", "D", "E", "G"];
 
-  function updateCarPosition() {
-    car.style.left = carPos + 'px';
-  }
-
-  function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-  }
-
-  window.addEventListener('resize', () => {
-    updateSizes();
-    carPos = clamp(carPos, 0, gameAreaWidth - carWidth);
-    updateCarPosition();
-  });
-
-  // 初次執行更新尺寸與初始位置
-  updateSizes();
-  carPos = 0;
-  updateCarPosition();
-
-  // 按鈕事件
-  document.getElementById('leftBtn').addEventListener('click', () => {
-    carPos = clamp(carPos - 20, 0, gameAreaWidth - carWidth);
-    updateCarPosition();
-    message.textContent = '';
-  });
-
-  document.getElementById('rightBtn').addEventListener('click', () => {
-    carPos = clamp(carPos + 20, 0, gameAreaWidth - carWidth);
-    updateCarPosition();
-    message.textContent = '';
-  });
-
-  document.getElementById('stopBtn').addEventListener('click', () => {
-    // 判斷車子是否停在停車格內
-    const carLeft = carPos;
-    const carRight = carPos + carWidth;
-
-    if (carLeft >= parkingLeft && carRight <= parkingRight) {
-      message.style.color = 'green';
-      message.textContent = '恭喜！成功停車！🚗✅';
-    } else {
-      message.style.color = 'red';
-      message.textContent = '未停好喔，請再嘗試！';
+  // 分岔點資料：分岔點id => { connectedTracks: [paths], state }
+  // 每個分岔點連接多條路線，state控制當前方向
+  // 兩個分岔點：X1和X2，X1在C，X2在F
+  const switches = {
+    X1: {
+      position: nodes.C,
+      states: [
+        { name: "向B", nextNode: "B" },
+        { name: "向F", nextNode: "F" }
+      ],
+      currentStateIndex: 0
+    },
+    X2: {
+      position: nodes.F,
+      states: [
+        { name: "向E", nextNode: "E" },
+        { name: "向G", nextNode: "G" }
+      ],
+      currentStateIndex: 0
     }
-  });
+  };
+
+  // 軌道線段（fromNode, toNode）
+  // 有特殊分岔處路由依 switches 狀態轉換
+  const tracks = [
+    ["A", "B"],
+    ["A", "D"],
+    ["D", "G"],
+    ["B", "E"],
+    ["B", "C"],
+    ["C", "F"],
+    ["F", "E"],
+    ["F", "G"],
+  ];
+
+  // 定義路徑尋找邏輯（包含分岔狀態影響），
+  // 根據起點跑軌道至終點（在此簡化循環路線）
+  // 列車必須依路徑依序走節點。
+  // 遊戲裡列車都依固定路線行駛，分岔點根據switch狀態切換分支。
+
+  // 找下一節點函式：根據當前節點與分岔狀態決定下個路徑節點
+  function getNextNode(currentNode) {
+    // 如果在分岔點，根據狀態決定方向
+    if (currentNode === "C") {
+      let sw = switches.X1;
+      return sw.states[sw.currentStateIndex].nextNode;
+    } else if (currentNode === "F") {
+      let sw = switches.X2;
+      return sw.states[sw.currentStateIndex].nextNode;
+    }
+    // 非分岔點依軌道預設路徑前進
+    // 尋找tracks中有(currentNode, toNode)
+    for (let track of tracks) {
+      if (track[0] === currentNode) return track[1];
+    }
+    return null;
+  }
+
+  // 列車類別
+  class Train {
+    constructor(id, color, startNode, speed = 1, stopTime = 80) {
+      this.id = id;
+      this.color = color;
+      this.currentNode = startNode;
+      this.nextNode = getNextNode(startNode);
+      this.speed = speed;
+      this.progress = 0; // 0 ~ 1，當前行進比例在 currentNode 和 nextNode 間
+      this.pos = { x: nodes[startNode].x, y: nodes[startNode].y };
+      this.stopTimer = 0;
+      this.stopTime = stopTime; // 停靠時間 (frame數)
+      this.state = "stopped"; // moving / stopped
+    }
+
+    update() {
+      if (this.state === "stopped") {
+        this.stopTimer++;
+        if (this.stopTimer >= this.stopTime) {
+          this.state = "moving";
+          this.stopTimer = 0;
+          this.nextNode = getNextNode(this.currentNode);
+        }
+        return;
+      }
+
+      if (!this.nextNode) {
+        console.warn(`🚧 列車${this.id}：沒有下一節點`);
+        this.state = "stopped";
+        return;
+      }
+
+      this.progress += 0.01 * this.speed;
+
+      if (this.progress >= 1) {
+        // 到下一節點，停車
+        this.currentNode = this.nextNode;
+        this.pos = { ...nodes[this.currentNode] };
+        this.progress = 0;
+        this.state = "stopped";
+      } else {
+        // 線性內插位置
+        let from = nodes[this.currentNode];
+        let to = nodes[this.nextNode];
+        this.pos.x = from.x + (to.x - from.x) * this.progress;
+        this.pos.y = from.y + (to.y - from.y) * this.progress;
+      }
+    }
+
+    draw(ctx) {
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(this.pos.x, this.pos.y, 12, 0, Math.PI * 2);
+      ctx.fill();
+      // 車頭矩形
+      ctx.fillRect(this.pos.x + 12, this.pos.y - 8, 12, 16);
+      // 编号文字
+      ctx.fillStyle = "#222";
+      ctx.font = "bold 14px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(this.id, this.pos.x, this.pos.y);
+    }
+  }
+
+  // 定義多列列車及排程（模擬時刻表按frame計數啟動）
+  const trains = [
+    new Train("1", "#e53935", "A", 1.2, 120),
+    new Train("2", "#43a047", "D", 1.0, 100),
+    new Train("3", "#1e88e5", "B", 1.1, 90)
+  ];
+
+  // 簡易排程：用計數器根據frame決定列車啟動狀態(停止/啟動)
+  let globalFrameCount = 0;
+  const schedule = [
+    { trainId: "1", startFrame: 0 },
+    { trainId: "2", startFrame: 300 },
+    { trainId: "3", startFrame: 600 }
+  ];
+
+  // 切換分岔點狀態控制
+  function toggleSwitch(switchId) {
+    switches[switchId].currentStateIndex =
+      (switches[switchId].currentStateIndex + 1) %
+      switches[switchId].states.length;
+    logStatus(
+      `分岔點 ${switchId} 切換為：${
+        switches[switchId].states[switches[switchId].currentStateIndex]
+          .name
+      }`
+    );
+  }
+
+  // 產生分岔點控制按鈕
+  function createSwitchButtons() {
+    for (let id in switches) {
+      const btn = document.createElement("button");
+      btn.textContent = `切換分岔點 ${id}`;
+      btn.className = "switchBtn";
+      btn.setAttribute("aria-pressed", "false");
+      btn.onclick = () => {
+        toggleSwitch(id);
+        updateSwitchButtons();
+      };
+      switchButtonsDiv.appendChild(btn);
+    }
+  }
+
+  // 更新分岔按鈕狀態顏色與aria屬性
+  function updateSwitchButtons() {
+    const buttons = switchButtonsDiv.querySelectorAll("button");
+    let i = 0;
+    for (let id in switches) {
+      const sw = switches[id];
+      let btn = buttons[i++];
+      btn.classList.toggle("active", sw.currentStateIndex === 1);
+      btn.setAttribute("aria-pressed", sw.currentStateIndex === 1 ? "true" : "false");
+      btn.textContent = `切換分岔點 ${id} （目前: ${sw.states[sw.currentStateIndex].name}）`;
+    }
+  }
+
+  // 繪製軌道線條
+  function drawTracks() {
+    ctx.lineCap = "round";
+    ctx.lineWidth = 8;
+
+    // 主軌道顏色
+    ctx.strokeStyle = "#9e9e9e";
+
+    tracks.forEach(([fromKey, toKey]) => {
+      // 分岔點的軌跡以強調的色彩顯示(根據分岔狀態)
+      if (
+        (fromKey === "C" && toKey === "B" && switches.X1.currentStateIndex === 0) ||
+        (fromKey === "C" && toKey === "F" && switches.X1.currentStateIndex === 1) ||
+        (fromKey === "F" && toKey === "E" && switches.X2.currentStateIndex === 0) ||
+        (fromKey === "F" && toKey === "G" && switches.X2.currentStateIndex === 1)
+      ) {
+        ctx.strokeStyle = "#f9a825"; // 強調顏色
+      } else {
+        ctx.strokeStyle = "#9e9e9e"; // 一般顏色
+      }
+
+      const from = nodes[fromKey];
+      const to = nodes[toKey];
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+    });
+  }
+
+  // 繪製節點（車站及交叉點）
+  function drawNodes() {
+    // 車站
+    stations.forEach(stationId => {
+      const p = nodes[stationId];
+      ctx.fillStyle = "#4caf50";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#000";
+      ctx.font = "bold 16px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(stationId, p.x, p.y);
+    });
+
+    // 分岔點
+    for (let id in switches) {
+      let sw = switches[id];
+      // 外圓圈表示分岔點
+      ctx.fillStyle = sw.currentStateIndex === 0 ? "#2196f3" : "#f44336";
+      ctx.beginPath();
+      ctx.arc(sw.position.x, sw.position.y, 16, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 內文字表示方向
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 18px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(
+        sw.states[sw.currentStateIndex].name.includes("B") ? "→" :
+        sw.states[sw.currentStateIndex].name.includes("F") ? "↓" :
+        sw.states[sw.currentStateIndex].name.includes("E") ? "→" :
+        sw.states[sw.currentStateIndex].name.includes("G") ? "↓" : "?",
+        sw.position.x,
+        sw.position.y
+      );
+    }
+  }
+
+  // 碰撞偵測（距離判斷）
+  function detectCollision() {
+    for (let i = 0; i < trains.length - 1; i++) {
+      for (let j = i + 1; j < trains.length; j++) {
+        const t1 = trains[i];
+        const t2 = trains[j];
+        const dist = Math.hypot(t1.pos.x - t2.pos.x, t1.pos.y - t2.pos.y);
+        if (dist < 30) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // 狀態紀錄區文字顯示
+  function logStatus(text) {
+    const timeStr = new Date().toLocaleTimeString();
+    const newLine = document.createElement("div");
+    newLine.textContent = `[${timeStr}] ${text}`;
+    statusDiv.appendChild(newLine);
+    // 限制最多保留20條訊息
+    while (statusDiv.childNodes.length > 20) {
+      statusDiv.removeChild(statusDiv.firstChild);
+    }
+    // 自動滾動到底部
+    statusDiv.scrollTop = statusDiv.scrollHeight;
+  }
+
+  // 遊戲主迴圈
+  function gameLoop() {
+    // 清畫布
+    ctx.clearRect(0, 0, W, H);
+
+    drawTracks();
+    drawNodes();
+
+    // 更新列車狀態與位置
+    globalFrameCount++;
+
+    // 執行排程啟動列車
+    schedule.forEach(item => {
+      if (globalFrameCount === item.startFrame) {
+        logStatus(`✈️ 列車${item.trainId}出發！`);
+        const t = trains.find(tr => tr.id === item.trainId);
+        if (t) t.state = "moving";
+      }
+    });
+
+    trains.forEach(train => {
+      train.update();
+      train.draw(ctx);
+    });
+
+    // 碰撞判定
+    if (detectCollision()) {
+      logStatus("⚠️ 警告：列車碰撞偵測！遊戲終止！");
+      trains.forEach(t => (t.state = "stopped"));
+    }
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  // 初始化分岔點控制按鈕
+  createSwitchButtons();
+  updateSwitchButtons();
+
+  // 遊戲初始狀態：列車都停止
+  trains.forEach(t => (t.state = "stopped"));
+  let globalFrameCount = 0;
+
+  // 排程定義 (按 frame 啟動)
+  const schedule = [
+    { trainId: "1", startFrame: 0 },
+    { trainId: "2", startFrame: 300 },
+    { trainId: "3", startFrame: 600 }
+  ];
+
+  // 啟動遊戲主迴圈
+  gameLoop();
+})();
 </script>
 
 </body>
