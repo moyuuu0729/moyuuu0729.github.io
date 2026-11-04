@@ -3,440 +3,493 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>進階列車調度盤遊戲Demo（含開始按鈕）</title>
+<title>進階大老二單人遊戲</title>
 <style>
-  body {
-    margin: 0; padding: 0;
-    background: #1a1a1a;
-    color: #eee;
-    font-family: "Microsoft JhengHei", Arial, sans-serif;
-    user-select: none;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  h2 {
-    margin: 15px 0 5px;
-  }
-  #gameCanvas {
-    background: #222;
-    border-radius: 12px;
-    border: 3px solid #555;
-    margin-bottom: 10px;
-    display: block;
-    max-width: 100vw;
-    width: 700px;
-    height: 450px;
-  }
-  #controlPanel {
-    width: 700px;
-    max-width: 100vw;
-    padding: 10px 15px;
-    background: #292929;
-    border-radius: 12px;
-    box-sizing: border-box;
-  }
-  #switchButtons {
-    margin-bottom: 10px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .switchBtn {
-    flex: 1 1 45%;
-    background: #2196f3;
-    border: none;
-    border-radius: 8px;
-    padding: 12px 0;
-    color: white;
-    font-size: 18px;
-    cursor: pointer;
-    user-select: none;
-    transition: background-color 0.25s ease;
-  }
-  .switchBtn.active {
-    background: #f9a825;
-    color: #222;
-  }
-  .switchBtn:active {
-    background: #1769aa;
-  }
-  #status {
-    background: #111;
-    padding: 10px;
-    border-radius: 8px;
-    min-height: 40px;
-    max-height: 100px;
-    overflow-y: auto;
-    font-size: 16px;
-    line-height: 1.3;
-    font-family: Consolas, monospace;
-    color: #e0e0e0;
-  }
-  #startButton {
-    margin: 15px 0;
-    padding: 16px 30px;
-    font-size: 24px;
-    border-radius: 12px;
-    border: none;
-    background-color: #4caf50;
-    color: white;
-    cursor: pointer;
-    user-select: none;
-    transition: background-color 0.3s ease;
-  }
-  #startButton:hover {
-    background-color: #388e3c;
-  }
-  @media (max-width: 720px) {
-    #gameCanvas, #controlPanel {
-      width: 95vw;
-    }
-    .switchBtn {
-      flex: 1 1 100%;
-    }
-  }
+  body { font-family: "微軟正黑體", sans-serif; background: #076; color: #fff; text-align: center; margin: 0; padding: 0; }
+  #gameArea { max-width: 1000px; margin: 10px auto; background: #184; padding: 10px; border-radius: 8px; }
+  #playerHand { margin: 10px 0; min-height: 140px; user-select:none;}
+  .card { width: 80px; height: 120px; margin: 0 4px; cursor: pointer; border-radius: 8px; border: 2px solid transparent; box-shadow: 0 2px 5px rgba(0,0,0,0.5); transition: border-color 0.3s, transform 0.3s; display: inline-block; background-size: contain; background-repeat: no-repeat; background-position: center; vertical-align: top;}
+  .card.selected { border-color: #ff0; transform: translateY(-15px); }
+  #controls { margin: 10px 0; }
+  button { font-size: 18px; padding: 8px 16px; margin: 0 8px; border-radius: 6px; border:none; cursor:pointer; background: #0a8; color:#fff; transition: background 0.3s; }
+  button:hover:not(:disabled) { background: #0c6; }
+  button:disabled { background:#555; cursor: not-allowed; }
+  #info { min-height: 40px; margin: 10px auto; font-size: 20px; }
+  #opponentsArea { margin-top: 20px; }
+  .opponent { margin: 8px 0; font-size: 18px; }
 </style>
 </head>
 <body>
+  <div id="gameArea">
+    <h1>進階大老二單人遊戲</h1>
+    <div><button id="btnStart">開始遊戲</button></div>
+    <div id="info">請按「開始遊戲」開始</div>
 
-<h2>進階列車調度盤遊戲 Demo</h2>
-<canvas id="gameCanvas" width="700" height="450"></canvas>
+    <div id="opponentsArea">
+      <div class="opponent" id="opponent1">電腦1：0張</div>
+      <div class="opponent" id="opponent2">電腦2：0張</div>
+      <div class="opponent" id="opponent3">電腦3：0張</div>
+    </div>
 
-<button id="startButton" aria-label="開始遊戲">開始遊戲</button>
+    <div id="playerHand"></div>
 
-<div id="controlPanel" role="region" aria-label="分岔點控制面板" hidden>
-  <div id="switchButtons">
+    <div id="controls" style="display:none;">
+      <button id="btnPlay" disabled>出牌</button>
+      <button id="btnPass" disabled>過牌</button>
+      <button id="btnHint">提示可出牌</button>
+    </div>
   </div>
-  <div id="status" aria-live="polite" aria-atomic="true">請按下開始遊戲按鈕啟動遊戲。</div>
-</div>
 
 <script>
-(() => {
-  const canvas = document.getElementById("gameCanvas");
-  const ctx = canvas.getContext("2d");
-  const switchButtonsDiv = document.getElementById("switchButtons");
-  const statusDiv = document.getElementById("status");
-  const controlPanel = document.getElementById("controlPanel");
-  const startButton = document.getElementById("startButton");
+const suits = ["C","D","H","S"];
+const suitNames = {C:"♣",D:"♦",H:"♥",S:"♠"};
+const ranksOrder = [3,4,5,6,7,8,9,10,11,12,13,1,2]; // 3最小，2最大
 
-  const W = canvas.width;
-  const H = canvas.height;
+const cardBaseURL = "https://raw.githubusercontent.com/hayeah/playing-cards-assets/master/png/";
 
-  const nodes = {
-    A: { x: 80, y: 80 },
-    B: { x: 620, y: 80 },
-    C: { x: 350, y: 150 },
-    D: { x: 80, y: 370 },
-    E: { x: 620, y: 370 },
-    F: { x: 350, y: 300 },
-    G: { x: 350, y: 370 }
-  };
-  const stations = ["A", "B", "D", "E", "G"];
-
-  const switches = {
-    X1: {
-      position: nodes.C,
-      states: [
-        { name: "向B", nextNode: "B" },
-        { name: "向F", nextNode: "F" }
-      ],
-      currentStateIndex: 0
-    },
-    X2: {
-      position: nodes.F,
-      states: [
-        { name: "向E", nextNode: "E" },
-        { name: "向G", nextNode: "G" }
-      ],
-      currentStateIndex: 0
-    }
-  };
-
-  const tracks = [
-    ["A", "B"],
-    ["A", "D"],
-    ["D", "G"],
-    ["B", "E"],
-    ["B", "C"],
-    ["C", "F"],
-    ["F", "E"],
-    ["F", "G"],
-  ];
-
-  // 遊戲狀態控制
-  let gameRunning = false;
-  let globalFrameCount = 0;
-
-  // 列車類別
-  class Train {
-    constructor(id, color, startNode, speed = 1, stopTime = 80) {
-      this.id = id;
-      this.color = color;
-      this.currentNode = startNode;
-      this.nextNode = getNextNode(startNode);
-      this.speed = speed;
-      this.progress = 0;
-      this.pos = { x: nodes[startNode].x, y: nodes[startNode].y };
-      this.stopTimer = 0;
-      this.stopTime = stopTime;
-      this.state = "stopped";
-    }
-    update() {
-      if (this.state === "stopped") {
-        this.stopTimer++;
-        if (this.stopTimer >= this.stopTime) {
-          this.state = "moving";
-          this.stopTimer = 0;
-          this.nextNode = getNextNode(this.currentNode);
-        }
-        return;
-      }
-      if (!this.nextNode) {
-        this.state = "stopped";
-        return;
-      }
-      this.progress += 0.01 * this.speed;
-      if (this.progress >= 1) {
-        this.currentNode = this.nextNode;
-        this.pos = { ...nodes[this.currentNode] };
-        this.progress = 0;
-        this.state = "stopped";
-      } else {
-        let from = nodes[this.currentNode];
-        let to = nodes[this.nextNode];
-        this.pos.x = from.x + (to.x - from.x) * this.progress;
-        this.pos.y = from.y + (to.y - from.y) * this.progress;
-      }
-    }
-    draw(ctx) {
-      ctx.fillStyle = this.color;
-      ctx.beginPath();
-      ctx.arc(this.pos.x, this.pos.y, 12, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillRect(this.pos.x + 12, this.pos.y - 8, 12, 16);
-      ctx.fillStyle = "#222";
-      ctx.font = "bold 14px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(this.id, this.pos.x, this.pos.y);
+function rankToImgNumber(rank){
+  if(rank === 1) return "01"; // A
+  if(rank === 2) return "02"; // 2
+  return rank.toString().padStart(2,"0");
+}
+function getCardImageURL(card) {
+  return cardBaseURL + card.suit + rankToImgNumber(card.rank) + ".png";
+}
+function createDeck() {
+  const deck = [];
+  for(const s of suits) {
+    for(const r of ranksOrder) {
+      deck.push({suit:s, rank:r, id:s + r});
     }
   }
+  return deck;
+}
+function shuffle(deck) {
+  for(let i=deck.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [deck[i],deck[j]]=[deck[j],deck[i]];
+  }
+}
 
-  const trains = [
-    new Train("1", "#e53935", "A", 1.2, 120),
-    new Train("2", "#43a047", "D", 1.0, 100),
-    new Train("3", "#1e88e5", "B", 1.1, 90)
-  ];
+let players = [
+  {name:"你", hand:[], isHuman:true},
+  {name:"電腦1", hand:[], isHuman:false},
+  {name:"電腦2", hand:[], isHuman:false},
+  {name:"電腦3", hand:[], isHuman:false}
+];
 
-  const schedule = [
-    { trainId: "1", startFrame: 0 },
-    { trainId: "2", startFrame: 300 },
-    { trainId: "3", startFrame: 600 }
-  ];
+let currentPlayer = 0; 
+let lastPlayedCards = null; 
+let lastPlayer = null; 
+let passCount = 0;
+let gameStarted = false;
 
-  function getNextNode(currentNode) {
-    if (currentNode === "C") {
-      return switches.X1.states[switches.X1.currentStateIndex].nextNode;
-    } else if (currentNode === "F") {
-      return switches.X2.states[switches.X2.currentStateIndex].nextNode;
+const playerHandDiv = document.getElementById("playerHand");
+const btnPlay = document.getElementById("btnPlay");
+const btnPass = document.getElementById("btnPass");
+const btnStart = document.getElementById("btnStart");
+const btnHint = document.getElementById("btnHint");
+const infoDiv = document.getElementById("info");
+const controlsDiv = document.getElementById("controls");
+const opponentDivs = [
+  document.getElementById("opponent1"),
+  document.getElementById("opponent2"),
+  document.getElementById("opponent3")
+];
+
+let selectedCards = new Set();
+
+// 牌型判斷與比較核心
+function sortCards(cards){
+  return cards.slice().sort((a,b)=>{
+    const rA = ranksOrder.indexOf(a.rank);
+    const rB = ranksOrder.indexOf(b.rank);
+    if(rA !== rB) return rA-rB;
+    return suits.indexOf(a.suit) - suits.indexOf(b.suit);
+  });
+}
+function isSingle(cards){return cards.length ===1;}
+function isPair(cards){return cards.length===2 && cards[0].rank === cards[1].rank;}
+function isTriple(cards){return cards.length===3 && cards.every(c=>c.rank===cards[0].rank);}
+function isTripleWithSingle(cards){
+  if(cards.length!==4) return false;
+  let rankCount = {};
+  for(const c of cards) rankCount[c.rank]=(rankCount[c.rank]||0)+1;
+  return Object.values(rankCount).some(v=>v===3);
+}
+function isStraight(cards){
+  if(cards.length<5) return false;
+  const sorted = sortCards(cards);
+  for(let i=1;i<sorted.length;i++){
+    const curIndex = ranksOrder.indexOf(sorted[i].rank);
+    const prevIndex = ranksOrder.indexOf(sorted[i-1].rank);
+    if(curIndex !== prevIndex+1) return false;
+  }
+  return true;
+}
+function isStraightPairs(cards){
+  if(cards.length<4 || cards.length%2!==0) return false;
+  const sorted = sortCards(cards);
+  for(let i=0;i<sorted.length;i+=2){
+    if(sorted[i].rank !== sorted[i+1].rank) return false;
+    if(i>0){
+      const prevIdx = ranksOrder.indexOf(sorted[i-2].rank);
+      const currIdx = ranksOrder.indexOf(sorted[i].rank);
+      if(currIdx !== prevIdx+1) return false;
     }
-    for (let track of tracks) {
-      if (track[0] === currentNode) return track[1];
+  }
+  return true;
+}
+function isTruck(cards){
+  if(!isStraightPairs(cards)) return false;
+  for(let i=0;i<cards.length;i+=2){
+    if(cards[i].suit !== cards[i+1].suit) return false;
+    if(i>1 && cards[i].suit !== cards[i-2].suit) return false;
+  }
+  return true;
+}
+
+const handRankValue = {
+  "single":1,
+  "pair":2,
+  "triple":3,
+  "tripleWithSingle":4,
+  "straight":5,
+  "straightPairs":6,
+  "truck":7
+};
+
+function getHandType(cards){
+  if(cards.length===0) return null;
+  if(isSingle(cards)) return "single";
+  if(isPair(cards)) return "pair";
+  if(isTriple(cards)) return "triple";
+  if(isTripleWithSingle(cards)) return "tripleWithSingle";
+  if(isTruck(cards)) return "truck";
+  if(isStraightPairs(cards)) return "straightPairs";
+  if(isStraight(cards)) return "straight";
+  return null;
+}
+
+function getMaxCard(cards){
+  const sorted = sortCards(cards);
+  return sorted[sorted.length-1];
+}
+
+function compareHands(a,b){
+  const typeA = getHandType(a);
+  const typeB = getHandType(b);
+  if(typeA === null || typeB === null) return null;
+  if(typeA !== typeB) return null;
+  if(a.length !== b.length) return null;
+  
+  const maxA = getMaxCard(a);
+  const maxB = getMaxCard(b);
+  
+  const maxARank = ranksOrder.indexOf(maxA.rank);
+  const maxBRank = ranksOrder.indexOf(maxB.rank);
+  if(maxARank > maxBRank) return 1;
+  if(maxARank < maxBRank) return -1;
+  if(suits.indexOf(maxA.suit) > suits.indexOf(maxB.suit)) return 1;
+  if(suits.indexOf(maxA.suit) < suits.indexOf(maxB.suit)) return -1;
+  return 0;
+}
+
+function formatCards(cards){
+  return cards.map(c=>suitNames[c.suit]+rankToDisplay(c.rank)).join(" ");
+}
+function rankToDisplay(rank) {
+  if(rank === 1) return "A";
+  if(rank === 11) return "J";
+  if(rank === 12) return "Q";
+  if(rank === 13) return "K";
+  return rank.toString();
+}
+
+function playCards(playerIndex, cards){
+  let player = players[playerIndex];
+  for(const c of cards){
+    const idx = player.hand.findIndex(x=>x.suit===c.suit && x.rank===c.rank);
+    if(idx>=0) player.hand.splice(idx,1);
+  }
+}
+
+function updateHandsDisplay(){
+  playerHandDiv.innerHTML = "";
+  if(players[0].hand.length===0){
+    playerHandDiv.textContent = "你已經出完所有牌！";
+  } else {
+    for(const card of players[0].hand){
+      const cardDiv = document.createElement("div");
+      cardDiv.className = "card";
+      cardDiv.style.backgroundImage = `url(${getCardImageURL(card)})`;
+      cardDiv.onclick = () => {
+        if(!gameStarted || currentPlayer !== 0) return;
+        const key = card.suit+card.rank;
+        if(selectedCards.has(key)){
+          selectedCards.delete(key);
+          cardDiv.classList.remove("selected");
+        } else {
+          selectedCards.add(key);
+          cardDiv.classList.add("selected");
+        }
+        btnPlay.disabled = selectedCards.size===0;
+      };
+      if(selectedCards.has(card.suit+card.rank)) cardDiv.classList.add("selected");
+      playerHandDiv.appendChild(cardDiv);
+    }
+  }
+  for(let i=0;i<3;i++){
+    opponentDivs[i].textContent = `${players[i+1].name}：${players[i+1].hand.length} 張`;
+  }
+}
+
+function findPlayableHands(hand, targetType, targetLen){
+  const results = [];
+  const combos = getAllCombos(hand, targetLen);
+  for(const combo of combos){
+    if(getHandType(combo) === targetType)
+      results.push(combo);
+  }
+  return results;
+}
+function getAllCombos(arr, n){
+  let result = [];
+  function backtrack(start,combo){
+    if(combo.length === n){
+      result.push(combo.slice());
+      return;
+    }
+    for(let i=start; i<arr.length; i++){
+      combo.push(arr[i]);
+      backtrack(i+1, combo);
+      combo.pop();
+    }
+  }
+  backtrack(0, []);
+  return result;
+}
+
+function findSmallestPlayable(hand){
+  // 鬆散策略：先找最小單張
+  let singles = hand.map(c=>[c]);
+  if(singles.length > 0) return [singles[0]];
+  return null;
+}
+
+function aiPlayCards(playerIndex){
+  let hand = players[playerIndex].hand;
+  if(!lastPlayedCards){
+    // 出牌權限內先出最小牌型（套用優先牌型）
+    for(const t of ["single","pair","triple","straight","straightPairs","truck"]){
+      let allPlays = findPlayableHands(hand, t, t==="tripleWithSingle" ? 4 : t==="straight" || t==="straightPairs" || t==="truck" ? 5 : t==="pair" ? 2 : 1);
+      if(allPlays.length >0){
+        allPlays.sort((a,b)=>compareHands(a,b));
+        return allPlays[0];
+      }
     }
     return null;
+  } else {
+    const lastType = getHandType(lastPlayedCards);
+    const lastLength = lastPlayedCards.length;
+    let candidatePlays = findPlayableHands(hand, lastType, lastLength).filter(h=>compareHands(h,lastPlayedCards) > 0);
+    if(candidatePlays.length === 0) return null;
+    candidatePlays.sort((a,b)=>compareHands(a,b));
+    return candidatePlays[0];
   }
+}
 
-  function toggleSwitch(switchId) {
-    switches[switchId].currentStateIndex =
-      (switches[switchId].currentStateIndex + 1) %
-      switches[switchId].states.length;
-    logStatus(
-      `分岔點 ${switchId} 切換為：${
-        switches[switchId].states[switches[switchId].currentStateIndex]
-          .name
-      }`
-    );
-  }
+function nextPlayer(){
+  currentPlayer = (currentPlayer+1) % players.length;
+}
 
-  function createSwitchButtons() {
-    for (let id in switches) {
-      const btn = document.createElement("button");
-      btn.textContent = `切換分岔點 ${id}`;
-      btn.className = "switchBtn";
-      btn.setAttribute("aria-pressed", "false");
-      btn.onclick = () => {
-        if (!gameRunning) return;
-        toggleSwitch(id);
-        updateSwitchButtons();
-      };
-      switchButtonsDiv.appendChild(btn);
-    }
-  }
+function aiTurn(){
+  infoDiv.textContent = `${players[currentPlayer].name} 正在思考...`;
+  btnPlay.disabled = true;
+  btnPass.disabled = true;
+  btnHint.disabled = true;
+  controlsDiv.style.display = "none";
 
-  function updateSwitchButtons() {
-    const buttons = switchButtonsDiv.querySelectorAll("button");
-    let i = 0;
-    for (let id in switches) {
-      const sw = switches[id];
-      let btn = buttons[i++];
-      btn.classList.toggle("active", sw.currentStateIndex === 1);
-      btn.setAttribute("aria-pressed", sw.currentStateIndex === 1 ? "true" : "false");
-      btn.textContent = `切換分岔點 ${id} （目前: ${sw.states[sw.currentStateIndex].name}）`;
-    }
-  }
-
-  function drawTracks() {
-    ctx.lineCap = "round";
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = "#9e9e9e";
-
-    tracks.forEach(([fromKey, toKey]) => {
-      if (
-        (fromKey === "C" && toKey === "B" && switches.X1.currentStateIndex === 0) ||
-        (fromKey === "C" && toKey === "F" && switches.X1.currentStateIndex === 1) ||
-        (fromKey === "F" && toKey === "E" && switches.X2.currentStateIndex === 0) ||
-        (fromKey === "F" && toKey === "G" && switches.X2.currentStateIndex === 1)
-      ) {
-        ctx.strokeStyle = "#f9a825";
-      } else {
-        ctx.strokeStyle = "#9e9e9e";
-      }
-      const from = nodes[fromKey];
-      const to = nodes[toKey];
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
-    });
-  }
-
-  function drawNodes() {
-    stations.forEach(stationId => {
-      const p = nodes[stationId];
-      ctx.fillStyle = "#4caf50";
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#000";
-      ctx.font = "bold 16px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(stationId, p.x, p.y);
-    });
-
-    for (let id in switches) {
-      let sw = switches[id];
-      ctx.fillStyle = sw.currentStateIndex === 0 ? "#2196f3" : "#f44336";
-      ctx.beginPath();
-      ctx.arc(sw.position.x, sw.position.y, 16, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#fff";
-      ctx.font = "bold 18px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(
-        sw.states[sw.currentStateIndex].name.includes("B") ? "→" :
-        sw.states[sw.currentStateIndex].name.includes("F") ? "↓" :
-        sw.states[sw.currentStateIndex].name.includes("E") ? "→" :
-        sw.states[sw.currentStateIndex].name.includes("G") ? "↓" : "?",
-        sw.position.x,
-        sw.position.y
-      );
-    }
-  }
-
-  function detectCollision() {
-    for (let i = 0; i < trains.length - 1; i++) {
-      for (let j = i + 1; j < trains.length; j++) {
-        const t1 = trains[i];
-        const t2 = trains[j];
-        const dist = Math.hypot(t1.pos.x - t2.pos.x, t1.pos.y - t2.pos.y);
-        if (dist < 30) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  function logStatus(text) {
-    const timeStr = new Date().toLocaleTimeString();
-    const newLine = document.createElement("div");
-    newLine.textContent = `[${timeStr}] ${text}`;
-    statusDiv.appendChild(newLine);
-    while (statusDiv.childNodes.length > 20) {
-      statusDiv.removeChild(statusDiv.firstChild);
-    }
-    statusDiv.scrollTop = statusDiv.scrollHeight;
-  }
-
-  function gameLoop() {
-    if (!gameRunning) return;
-    ctx.clearRect(0, 0, W, H);
-    drawTracks();
-    drawNodes();
-    globalFrameCount++;
-
-    schedule.forEach(item => {
-      if (globalFrameCount === item.startFrame) {
-        logStatus(`✈️ 列車${item.trainId}出發！`);
-        const t = trains.find(tr => tr.id === item.trainId);
-        if (t) t.state = "moving";
-      }
-    });
-
-    trains.forEach(train => {
-      train.update();
-      train.draw(ctx);
-    });
-
-    if (detectCollision()) {
-      logStatus("⚠️ 警告：列車碰撞偵測！遊戲終止！");
-      trains.forEach(t => (t.state = "stopped"));
-      gameRunning = false;
-      startButton.textContent = "重新開始";
-      startButton.style.backgroundColor = "#e53935";
-      controlPanel.hidden = true;
-      startButton.hidden = false;
+  setTimeout(()=>{
+    let aiCards = aiPlayCards(currentPlayer);
+    if(aiCards){
+      playCards(currentPlayer, aiCards);
+      lastPlayedCards=aiCards;
+      lastPlayer=currentPlayer;
+      passCount=0;
+      infoDiv.textContent=`${players[currentPlayer].name} 出了 ${formatCards(aiCards)}`;
     } else {
-      requestAnimationFrame(gameLoop);
+      passCount++;
+      infoDiv.textContent=`${players[currentPlayer].name} 過牌`;
+    }
+    updateHandsDisplay();
+
+    if(players[currentPlayer].hand.length===0){
+      endGame(players[currentPlayer].name);
+      return;
+    }
+    if(passCount >= 3){
+      lastPlayedCards = null;
+      passCount = 0;
+      infoDiv.textContent += " （牌局重置，請重新出牌）";
+      currentPlayer = lastPlayer;
+    } else {
+      nextPlayer();
+    }
+    if(currentPlayer === 0){
+      controlsDiv.style.display = "block";
+      btnPlay.disabled = true;
+      btnPass.disabled = false;
+      btnHint.disabled = false;
+      selectedCards.clear();
+      updateHandsDisplay();
+      infoDiv.textContent += " 輪到你出牌";
+    } else {
+      aiTurn();
+    }
+  }, 1500);
+}
+
+btnPlay.onclick = ()=>{
+  if(!gameStarted || currentPlayer !== 0) return;
+  if(selectedCards.size === 0){
+    alert("請選擇要出的牌！");
+    return;
+  }
+  const cardsToPlay = Array.from(selectedCards).map(key=>{
+    const suit = key[0];
+    const rank = Number(key.slice(1));
+    return players[0].hand.find(c=>c.suit===suit && c.rank === rank);
+  });
+  const handType = getHandType(cardsToPlay);
+  if(!handType){
+    alert("牌型不合法！");
+    return;
+  }
+  if(lastPlayedCards){
+    const lastType = getHandType(lastPlayedCards);
+    if(handType !== lastType || cardsToPlay.length !== lastPlayedCards.length){
+      alert("必須出同牌型且張數相同的牌！");
+      return;
+    }
+    if(compareHands(cardsToPlay, lastPlayedCards) <= 0){
+      alert("必須出比上家更大的牌！");
+      return;
     }
   }
-
-  function resetGame() {
-    trains.forEach(t => {
-      t.currentNode = t.id === "1" ? "A" : t.id === "2" ? "D" : "B";
-      t.nextNode = getNextNode(t.currentNode);
-      t.progress = 0;
-      t.state = "stopped";
-      t.stopTimer = 0;
-      t.pos = { ...nodes[t.currentNode] };
-    });
-    globalFrameCount = 0;
-    for (let id in switches) {
-      switches[id].currentStateIndex = 0;
-    }
-    updateSwitchButtons();
-    statusDiv.textContent = "";
+  playCards(0, cardsToPlay);
+  lastPlayedCards = cardsToPlay;
+  lastPlayer = 0;
+  passCount=0;
+  updateHandsDisplay();
+  selectedCards.clear();
+  btnPlay.disabled = true;
+  btnPass.disabled = false;
+  controlsDiv.style.display = "none";
+  infoDiv.textContent = `你出了 ${formatCards(cardsToPlay)}`;
+  if(players[0].hand.length === 0){
+    endGame("你");
+    return;
   }
+  nextPlayer();
+  aiTurn();
+};
 
-  startButton.onclick = () => {
-    if (gameRunning) return;
-    resetGame();
-    gameRunning = true;
-    controlPanel.hidden = false;
-    startButton.hidden = true;
-    startButton.style.backgroundColor = "#4caf50";
-    startButton.textContent = "開始遊戲";
-    logStatus("遊戲開始，請操作分岔點並避免列車碰撞！");
-    gameLoop();
-  };
+btnPass.onclick=()=>{
+  if(!gameStarted || currentPlayer !== 0) return;
+  passCount++;
+  if(passCount >=3){
+    lastPlayedCards = null;
+    passCount=0;
+    infoDiv.textContent = "三人連續過牌，牌局重置，請重新出牌";
+  } else {
+    infoDiv.textContent = "你選擇過牌";
+  }
+  btnPlay.disabled = true;
+  btnPass.disabled = true;
+  selectedCards.clear();
+  updateHandsDisplay();
+  controlsDiv.style.display = "none";
+  nextPlayer();
+  aiTurn();
+};
 
-  createSwitchButtons();
-  updateSwitchButtons();
-})();
+function hintPlayable(){
+  if(!gameStarted || currentPlayer !== 0) return;
+  btnPlay.disabled = true;
+  btnPass.disabled = true;
+  selectedCards.clear();
+
+  let hintHands;
+  if(!lastPlayedCards){
+    // 沒有人出牌，提示最小牌型
+    for(const t of ["single","pair","triple","straight","straightPairs","truck"]){
+      let plays = findPlayableHands(players[0].hand, t, t==="tripleWithSingle"?4: t==="straight"||t==="straightPairs"||t==="truck"?5: t==="pair"? 2:1);
+      if(plays.length>0){
+        hintHands = plays[0];
+        break;
+      }
+    }
+  } else {
+    hintHands = findPlayableHands(players[0].hand, getHandType(lastPlayedCards), lastPlayedCards.length)
+      .filter(h=>compareHands(h, lastPlayedCards)>0)[0];
+  }
+  if(hintHands){
+    for(const c of hintHands) selectedCards.add(c.suit+c.rank);
+    updateHandsDisplay();
+    btnPlay.disabled = false;
+    btnPass.disabled = false;
+    infoDiv.textContent = "提示選牌完畢，請出牌或過牌";
+  } else {
+    infoDiv.textContent = "沒有合法牌可以出，建議過牌";
+  }
+}
+btnHint.onclick = hintPlayable;
+
+btnStart.onclick = ()=>{
+  const deck = createDeck();
+  shuffle(deck);
+  players.forEach(p=>p.hand=[]);
+  for(let i=0;i<deck.length;i++){
+    players[i%4].hand.push(deck[i]);
+  }
+  players.forEach(p=>p.hand.sort((a,b)=>cardValue(a)-cardValue(b)));
+  gameStarted = true;
+  currentPlayer = 0;
+  lastPlayedCards = null;
+  lastPlayer = null;
+  passCount = 0;
+  selectedCards.clear();
+  updateHandsDisplay();
+  updateOpponentsDisplay();
+  infoDiv.textContent = "遊戲開始，輪到你出牌";
+  controlsDiv.style.display = "block";
+  btnPlay.disabled = true;
+  btnPass.disabled = false;
+  btnHint.disabled = false;
+};
+
+function updateOpponentsDisplay(){
+  for(let i=0; i<3; i++){
+    opponentDivs[i].textContent = `${players[i+1].name}：${players[i+1].hand.length} 張`;
+  }
+}
+
+function cardValue(card){
+  let rankOrder = ranksOrder.indexOf(card.rank);
+  return rankOrder + (suits.indexOf(card.suit) * 0.1);
+}
+
+function endGame(winnerName){
+  infoDiv.textContent = `遊戲結束，${winnerName} 獲勝！`;
+  controlsDiv.style.display = "none";
+  gameStarted = false;
+  selectedCards.clear();
+  updateHandsDisplay();
+}
+
+updateHandsDisplay();
+updateOpponentsDisplay();
 </script>
-
 </body>
 </html>
