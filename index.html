@@ -52,9 +52,19 @@ function rankToImgNumber(rank){
   if(rank === 2) return "02"; // 2
   return rank.toString().padStart(2,"0");
 }
-function getCardImageURL(card) {
-  return cardBaseURL + card.suit + rankToImgNumber(card.rank) + ".png";
+function rankToString(rank) {
+  if(rank === 1) return "A";
+  if(rank === 11) return "J";
+  if(rank === 12) return "Q";
+  if(rank === 13) return "K";
+  return rank.toString();
 }
+
+function getCardImageURL(card) {
+  // Example: 3 of clubs => 3C.png
+  return `https://deckofcardsapi.com/static/img/${rankToString(card.rank)}${card.suit}.png`;
+}
+
 function createDeck() {
   const deck = [];
   for(const s of suits) {
