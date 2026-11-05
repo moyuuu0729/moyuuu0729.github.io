@@ -3,167 +3,273 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>大老二 完整版 單人遊戲</title>
+<title>大老二 完整版（梅花3先手+選牌微調+遊戲控制）</title>
 <style>
-  * { box-sizing: border-box; }
-  html, body {
+  * {box-sizing: border-box;}
+  html,body {
     margin: 0; padding: 0; height: 100%; background: #076; font-family: "微軟正黑體", sans-serif; color: #fff;
-    display: flex; flex-direction: column; user-select: none;
+    display: flex; flex-direction: column; user-select:none;
   }
-  #gameBoard {
-    flex-grow: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-    background: #184; box-shadow: inset 0 0 45px #004400; padding: 10px;
-    overflow: hidden;
+  #container {
+    flex: 1; display: flex; flex-direction: column; align-items:center; justify-content: center;
   }
-  .opponent {
-    display: flex; align-items: center; background: rgba(0,0,0,0.3);
-    border-radius: 12px; padding: 6px 10px; margin: 4px 0;
-    box-shadow: 0 0 10px #0a4;
-    user-select: none;
+  /* 首頁 */
+  #startScreen {
+    display: flex; flex-direction: column; align-items:center; justify-content: center;
+    height: 100vh; width: 100vw; background: #184;
   }
-  .opponent .label {
-    color: #cef; font-weight: bold; margin-left: 12px; line-height: 1.2;
-    text-align: center;
+  #startBtn {
+    cursor: pointer; font-size: 26px; padding: 14px 48px; border-radius: 12px;
+    background: #0a8; border:none; color:#fff; transition: background 0.3s;
+    user-select:none;
+  }
+  #startBtn:hover {
+    background: #0c9;
+  }
+  /* 遊戲區 */
+  #gameScreen {
+    display: none; flex-direction: column; align-items:center; width: 100vw; max-width: 840px; flex-grow: 1;
+    background: #184; box-shadow: inset 0 0 50px #003300; padding: 16px;
+  }
+  /* 對手名片 */
+  .playerGroup {
+    background: rgba(0,80,0,0.7);
+    border-radius: 14px;
+    padding: 8px 16px;
+    margin: 6px auto;
+    box-shadow: 0 0 15px #0e6 inset;
+    user-select:none;
+    width: 100%;
+    max-width: 760px;
+    display: flex; justify-content: flex-start; align-items: center;
+    gap: 12px;
+  }
+  .playerGroup .name {
+    font-weight: 700;
+    font-size: 18px;
+    color: #ade;
+    flex-shrink: 0;
+    min-width: 80px;
+  }
+  .playerGroup .count {
+    margin-left: auto;
+    font-size: 16px;
+    color: #bbf;
   }
   .card-row {
-    display: flex; overflow: hidden; max-width: 380px;
+    display: flex; position: relative;
+    overflow: hidden;
+    flex: 1;
+    max-width: 600px;
   }
   .card-back {
-    width: 70px; height: 98px; margin-left: -56px;
-    border-radius: 8px; background-image: url("https://deckofcardsapi.com/static/img/back.png");
-    background-size: cover; box-shadow: 0 4px 9px rgba(0,0,0,0.9);
+    width: 72px; height: 100px;
+    border-radius: 8px;
+    background-image: url("https://deckofcardsapi.com/static/img/back.png");
+    background-size: cover;
+    box-shadow: 0 2px 8px #0009;
+    margin-left: -58px;
+    cursor: default;
+    transition: transform 0.3s;
   }
-  #opponentTop { justify-content: center; }
-  #opponentLeft, #opponentRight {
-    flex-direction: column; align-items: center;
+  .card-back:first-child {
+    margin-left: 0;
   }
-  #opponentLeft .label, #opponentRight .label {
-    margin-left: 0; margin-top: 8px;
-  }
+  /* 出牌區 */
   #playArea {
-    margin: 16px 0 8px 0; min-height: 140px;
-    width: 680px; max-width: 90vw; background: #0a2; border-radius: 16px;
-    display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 8px;
-    position: relative; box-shadow: inset 0 0 30px #003300;
+    margin: 14px 0 8px 0;
+    min-height: 130px;
+    width: 760px;
+    max-width: 95vw;
+    background: #0a2;
+    border-radius: 14px;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    box-shadow: inset 0 0 26px #003300;
+    position: relative;
   }
   .played-card {
-    width: 82px; height: 116px; border-radius: 10px;
-    background-position: center; background-repeat: no-repeat;
-    background-size: contain; box-shadow: 0 3px 8px rgba(0,0,0,0.7);
+    width: 84px; height: 118px;
+    border-radius: 12px;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow: 0 5px 10px #001900;
     animation: flyCard 0.6s ease forwards;
   }
   @keyframes flyCard {
-    0%   { transform: translateY(100px) scale(0.6) rotate(20deg); opacity: 0; }
-    100% { transform: translateY(0) scale(1) rotate(0deg); opacity: 1; }
+    0%   { transform: translateY(120px) scale(0.6) rotate(15deg); opacity: 0; }
+    100% { transform: translateY(0) scale(1) rotate(0); opacity: 1; }
   }
-
+  /* 玩家手牌 */
   #playerHand {
-    max-width: 780px; height: 140px; display: flex; justify-content: center; user-select: none;
     position: relative;
+    height: 140px;
+    max-width: 760px;
+    user-select: none;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    padding-bottom: 16px;
   }
   #playerHand .card {
-    width: 80px; height: 112px; margin-left: -64px;
-    border-radius: 10px;
-    background-position: center; background-repeat: no-repeat; background-size: contain;
-    box-shadow: 0 5px 10px rgba(0,0,0,0.9);
-    cursor: pointer; transition: transform 0.3s ease, box-shadow 0.3s ease;
-    position: relative; z-index: 1;
+    width: 80px;
+    height: 112px;
+    border-radius: 12px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.9);
+    cursor: pointer;
+    margin-left: -64px;
+    position: relative;
+    transition: transform 0.25s ease, z-index 0.25s ease;
+    z-index: 1;
   }
   #playerHand .card:first-child {
     margin-left: 0;
   }
   #playerHand .card.selected {
-    transform: translateY(-26px);
-    box-shadow: 0 12px 22px 4px #ffd700;
+    transform: translateY(-22px);
     z-index: 10;
   }
-
+  /* 按鈕群 */
   #controls {
-    margin: 8px 0 20px 0; max-width: 780px; display: flex; justify-content: center; gap: 16px;
+    margin: 8px auto 20px auto;
+    display: flex;
+    gap: 18px;
+    justify-content: center;
+    max-width: 760px;
   }
   #controls button {
-    cursor: pointer; border: none; border-radius: 12px;
-    padding: 12px 26px; background: #0a8; color: #fff; font-size: 18px;
-    transition: background-color 0.3s;
-    user-select: none;
+    border: none;
+    border-radius: 12px;
+    padding: 14px 28px;
+    font-size: 18px;
+    background: #0a8;
+    cursor: pointer;
+    color: #fff;
+    transition: background-color 0.25s ease;
+    user-select:none;
+  }
+  #controls button:disabled {
+    background: #555;
+    cursor: not-allowed;
   }
   #controls button:hover:not(:disabled) {
     background: #0c9;
   }
-  #controls button:disabled {
-    background: #555; cursor: not-allowed;
-  }
-
+  /* 文字提示 */
   #info {
-    font-size: 20px; height: 32px; text-align: center; color: #ffd;
+    margin: 0 auto 8px auto;
+    max-width: 760px;
+    font-size: 22px;
+    color: #ffd;
     min-height: 32px;
-    user-select: none;
-    margin-bottom: 5px;
+    user-select:none;
+    text-align: center;
   }
-
-  /* AI玩家名片框 */
-  .player-card-group {
-    border: 2px solid #0a8; border-radius: 14px; padding: 8px 10px;
-    margin: 4px 16px; background: rgba(0, 60, 0, 0.7); min-width: 210px;
-    box-shadow: 0 0 14px #0af inset;
+  /* 結束遊戲彈窗 */
+  #endDialog {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 99;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.3s ease;
   }
-  .player-card-group .name {
-    font-size: 18px; font-weight: 700; margin-bottom: 6px; color: #ade;
+  #endDialog.show {
+    visibility: visible;
+    opacity: 1;
   }
-  .player-card-group .count {
-    font-size: 16px; color: #bdf;
+  #endContent {
+    background: #092;
+    border-radius: 16px;
+    padding: 32px 48px;
+    text-align: center;
+    user-select:none;
+  }
+  #endContent h2 {
+    font-size: 28px;
+    margin-bottom: 24px;
+    color: #ffd;
+  }
+  #endContent button {
+    margin: 0 12px;
+    font-size: 20px;
+    padding: 12px 24px;
+    border:none;
+    border-radius: 12px;
+    cursor: pointer;
+    background: #0a8;
+    color: #fff;
+    transition: background-color 0.25s;
+  }
+  #endContent button:hover {
+    background: #0c9;
   }
 </style>
 </head>
+
 <body>
-  <div id="gameBoard">
-    <!-- 對手區 -->
-    <div class="opponent" id="opponentTopContainer">
-      <div class="player-card-group">
+  <div id="container">
+    <!-- 首頁 -->
+    <div id="startScreen">
+      <button id="startBtn">開始遊戲</button>
+    </div>
+
+    <!-- 遊戲畫面 -->
+    <div id="gameScreen">
+      <div class="playerGroup" id="player1">
         <div class="name">電腦 1</div>
         <div class="card-row" id="opponentTopCards"></div>
         <div class="count">牌數：<span id="countTop">13</span></div>
       </div>
-    </div>
-    <div style="width: 90vw; max-width: 780px; display: flex; justify-content: space-between; margin: 0 auto;">
-      <div class="opponent" id="opponentLeftContainer" style="flex-direction: column; align-items: center;">
-        <div class="player-card-group" style="text-align:center;">
-          <div class="name">電腦 2</div>
-          <div class="card-row" id="opponentLeftCards"></div>
-          <div class="count">牌數：<span id="countLeft">13</span></div>
-        </div>
+      <div class="playerGroup" id="player2">
+        <div class="name">電腦 2</div>
+        <div class="card-row" id="opponentLeftCards"></div>
+        <div class="count">牌數：<span id="countLeft">13</span></div>
       </div>
-      <div class="opponent" id="opponentRightContainer" style="flex-direction: column; align-items: center;">
-        <div class="player-card-group" style="text-align:center;">
-          <div class="name">電腦 3</div>
-          <div class="card-row" id="opponentRightCards"></div>
-          <div class="count">牌數：<span id="countRight">13</span></div>
-        </div>
+      <div class="playerGroup" id="player3">
+        <div class="name">電腦 3</div>
+        <div class="card-row" id="opponentRightCards"></div>
+        <div class="count">牌數：<span id="countRight">13</span></div>
       </div>
+
+      <div id="playArea">暫無出牌</div>
+
+      <div id="playerHand"></div>
+
+      <div id="controls">
+        <button id="btnPlay" disabled>出牌</button>
+        <button id="btnPass" disabled>過牌</button>
+        <button id="btnHint">提示</button>
+      </div>
+
+      <div id="info">請準備開始</div>
     </div>
+  </div>
 
-    <!-- 出牌區 -->
-    <div id="playArea">暫無出牌</div>
-
-    <!-- 玩家手牌 -->
-    <div id="playerHand"></div>
-
-    <!-- 按鈕區 -->
-    <div id="controls">
-      <button id="btnPlay" disabled>出牌</button>
-      <button id="btnPass" disabled>過牌</button>
-      <button id="btnHint">提示</button>
+  <div id="endDialog">
+    <div id="endContent">
+      <h2 id="endMessage"></h2>
+      <button id="btnReplay">再來一局</button>
+      <button id="btnBack">回首頁</button>
     </div>
-
-    <!-- 訊息提示 -->
-    <div id="info">請開始遊戲</div>
   </div>
 
 <script>
 (() => {
+  /* 牌＆遊戲變數與函式 */
   const suits = ["C","D","H","S"];
   const suitNames = {C:"♣",D:"♦",H:"♥",S:"♠"};
-  const ranksOrder = [3,4,5,6,7,8,9,10,11,12,13,1,2];
+  const ranksOrder = [3,4,5,6,7,8,9,10,11,12,13,1,2]; // 3最小，2最大
 
   const players = [
     {name:"你", hand:[], isHuman:true, cardRow:null, countSpan:null},
@@ -172,19 +278,20 @@
     {name:"電腦 3", hand:[], isHuman:false, cardRow:null, countSpan:null},
   ];
 
-  let currentPlayer = 0;
-  let lastPlayedCards = null;
-  let lastPlayer = null;
-  let passCount = 0;
-  let gameStarted = false;
-  let selectedCards = new Set();
-
+  /* 畫面元素參考 */
+  const startScreen = document.getElementById("startScreen");
+  const startBtn = document.getElementById("startBtn");
+  const gameScreen = document.getElementById("gameScreen");
   const playerHandDiv = document.getElementById("playerHand");
   const infoDiv = document.getElementById("info");
   const playArea = document.getElementById("playArea");
   const btnPlay = document.getElementById("btnPlay");
   const btnPass = document.getElementById("btnPass");
   const btnHint = document.getElementById("btnHint");
+  const endDialog = document.getElementById("endDialog");
+  const endMessage = document.getElementById("endMessage");
+  const btnReplay = document.getElementById("btnReplay");
+  const btnBack = document.getElementById("btnBack");
 
   players[1].cardRow = document.getElementById("opponentTopCards");
   players[1].countSpan = document.getElementById("countTop");
@@ -193,28 +300,37 @@
   players[3].cardRow = document.getElementById("opponentRightCards");
   players[3].countSpan = document.getElementById("countRight");
 
-  function createDeck() {
-    const deck = [];
-    for(const s of suits) {
-      for(const r of ranksOrder) {
+  /* 遊戲狀態 */
+  let currentPlayer = 0;
+  let lastPlayedCards = null;
+  let lastPlayer = null;
+  let passCount = 0;
+  let gameStarted = false;
+  let selectedCards = new Set();
+
+  /* 工具函式 */
+  function createDeck(){
+    let deck = [];
+    for(let s of suits){
+      for(let r of ranksOrder){
         deck.push({suit:s, rank:r, id:s+r});
       }
     }
     return deck;
   }
 
-  function shuffle(deck) {
-    for(let i=deck.length-1; i>0; i--) {
-      const j = Math.floor(Math.random()*(i+1));
+  function shuffle(deck){
+    for(let i=deck.length-1; i>0; i--){
+      let j = Math.floor(Math.random()*(i+1));
       [deck[i], deck[j]] = [deck[j], deck[i]];
     }
   }
 
   function sortCards(cards){
-    return cards.slice().sort((a,b)=>{
-      const rA = ranksOrder.indexOf(a.rank);
-      const rB = ranksOrder.indexOf(b.rank);
-      if(rA!==rB) return rA-rB;
+    return cards.slice().sort((a,b)=> {
+      let rA = ranksOrder.indexOf(a.rank);
+      let rB = ranksOrder.indexOf(b.rank);
+      if(rA !== rB) return rA-rB;
       return suits.indexOf(a.suit)-suits.indexOf(b.suit);
     });
   }
@@ -231,100 +347,170 @@
     return `https://deckofcardsapi.com/static/img/${rankToString(card.rank)}${card.suit}.png`;
   }
 
-  // 玩家手牌顯示
-  function renderPlayerCards() {
-    playerHandDiv.innerHTML = "";
-    players[0].hand.forEach(card=>{
-      const div = document.createElement("div");
-      div.className = "card";
-      div.style.backgroundImage = `url(${getCardImageURL(card)})`;
-      const key = card.suit+card.rank;
-      if(selectedCards.has(key)) div.classList.add("selected");
-      div.onclick = () => {
-        if(currentPlayer!==0) return;
-        if(selectedCards.has(key)){
-          selectedCards.delete(key);
-          div.classList.remove("selected");
-        } else {
-          selectedCards.add(key);
-          div.classList.add("selected");
-        }
-        btnPlay.disabled = selectedCards.size === 0;
-      };
-      playerHandDiv.appendChild(div);
-    });
-  }
-  // 對手牌（背面牌）顯示
+  /* 對手牌渲染 */
   function renderOpponents(){
     for(let i=1; i<=3; i++){
-      const player = players[i];
+      let player = players[i];
       player.cardRow.innerHTML = "";
-      for(let j=0;j<player.hand.length;j++){
-        const backDiv = document.createElement("div");
-        backDiv.className = "card-back";
-        player.cardRow.appendChild(backDiv);
+      // 對手牌背面，重疊排列
+      for(let j=0; j<player.hand.length; j++){
+        let div = document.createElement("div");
+        div.className = "card-back";
+        player.cardRow.appendChild(div);
       }
       player.countSpan.textContent = player.hand.length;
     }
   }
 
-  // 出牌區渲染，加入飛牌動畫
+  /* 玩家手牌渲染 */
+  function renderPlayerCards(){
+    playerHandDiv.innerHTML = "";
+    players[0].hand.forEach(card=>{
+      let div = document.createElement("div");
+      div.className = "card";
+      div.style.backgroundImage = `url(${getCardImageURL(card)})`;
+      let key = card.suit+card.rank;
+      if(selectedCards.has(key)) div.classList.add("selected");
+      div.onclick = () => {
+        if(currentPlayer !== 0) return;
+        if(selectedCards.has(key)){
+          selectedCards.delete(key);
+          div.classList.remove("selected");
+        }else{
+          selectedCards.add(key);
+          div.classList.add("selected");
+        }
+        btnPlay.disabled = selectedCards.size===0 ? true : false;
+      };
+      playerHandDiv.appendChild(div);
+    });
+  }
+
+  /* 出牌區顯示與動畫 */
   function renderPlayArea(){
     playArea.innerHTML = "";
-    if(!lastPlayedCards || lastPlayedCards.length === 0) {
+    if(!lastPlayedCards || lastPlayedCards.length === 0){
       playArea.textContent = "暫無出牌";
       return;
     }
     lastPlayedCards.forEach(card => {
-      const div = document.createElement("div");
+      let div = document.createElement("div");
       div.className = "played-card";
       div.style.backgroundImage = `url(${getCardImageURL(card)})`;
       playArea.appendChild(div);
     });
   }
 
-  // 全面刷新UI
+  /* 更新所有畫面 */
   function updateAll(){
     renderPlayerCards();
     renderOpponents();
     renderPlayArea();
   }
 
-  // 牌型判斷函式 (完整版整合於此)
-  // 同前述版本，支援完整牌型請參考先前提供代碼
+  /* 找梅花３玩家做起手 */
+  function whoHasClubThree(){
+    for(let i=0; i<players.length; i++){
+      for(let card of players[i].hand){
+        if(card.suit === "C" && card.rank===3){
+          return i;
+        }
+      }
+    }
+    return 0;
+  }
 
-  // 判斷是否為順子 (範例完整請將此與其他牌型合併)
+  /* 法規與AI與牌型判斷 */
+  function isSingle(cards){ return cards.length === 1; }
+  function isPair(cards){
+    if(cards.length !==2) return false;
+    return cards[0].rank === cards[1].rank;
+  }
+  function isTriple(cards){
+    if(cards.length !==3) return false;
+    return cards.every(c => c.rank === cards[0].rank);
+  }
+  function isTripleWithSingle(cards){
+    if(cards.length !==4) return false;
+    let count = {};
+    cards.forEach(c => count[c.rank] = (count[c.rank] ||0) +1);
+    return Object.values(count).some(c => c===3);
+  }
   function isStraight(cards){
     if(cards.length <5) return false;
     let sorted = sortCards(cards);
-    for(let i = 1; i < sorted.length; i++) {
-      let cur = ranksOrder.indexOf(sorted[i].rank);
-      let prev = ranksOrder.indexOf(sorted[i-1].rank);
-      if(cur !== prev + 1) return false;
+    for(let i=1; i<sorted.length; i++){
+      if(ranksOrder.indexOf(sorted[i].rank) !== ranksOrder.indexOf(sorted[i-1].rank)+1){
+        return false;
+      }
     }
     return true;
   }
-  // 其他牌型請整合於此...
+  function isStraightPairs(cards){
+    if(cards.length <4 || cards.length % 2 !==0) return false;
+    let sorted = sortCards(cards);
+    for(let i=0; i<sorted.length; i+=2){
+      if(sorted[i].rank !== sorted[i+1].rank) return false;
+      if(i>0){
+        if(ranksOrder.indexOf(sorted[i].rank) !== ranksOrder.indexOf(sorted[i-2].rank)+1){
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+  function isTruck(cards){
+    if(!isStraightPairs(cards)) return false;
+    for(let i=0; i<cards.length; i+=2){
+      if(cards[i].suit !== cards[i+1].suit) return false;
+      if(i>1 && cards[i].suit !== cards[i-2].suit) return false;
+    }
+    return true;
+  }
+  function isBomb(cards){
+    if(cards.length !==4) return false;
+    let count = {};
+    cards.forEach(c => count[c.rank]=(count[c.rank]||0)+1);
+    return Object.values(count).some(c => c===4);
+  }
+
+  const handRankPriority = {
+    single:1,
+    pair:2,
+    triple:3,
+    tripleWithSingle:4,
+    straight:5,
+    straightPairs:6,
+    truck:7,
+    bomb:8
+  };
 
   function getHandType(cards){
-    // 請整合全部判斷例如單張、對子、三條、三帶一、順子、拖拉機、炸彈等
-    if(cards.length === 1) return "single";
-    if(cards.length === 2 && cards[0].rank === cards[1].rank) return "pair";
-    // 簡化示例：順子
+    if(cards.length === 0) return null;
+    if(isBomb(cards)) return "bomb";
+    if(isTruck(cards)) return "truck";
+    if(isStraightPairs(cards)) return "straightPairs";
     if(isStraight(cards)) return "straight";
+    if(isTripleWithSingle(cards)) return "tripleWithSingle";
+    if(isTriple(cards)) return "triple";
+    if(isPair(cards)) return "pair";
+    if(isSingle(cards)) return "single";
     return null;
   }
-  // 大小比較
+
   function getMaxCard(cards){
     let sorted = sortCards(cards);
-    return sorted[sorted.length-1];
+    return sorted[sorted.length - 1];
   }
-  function compareHands(a,b){
+
+  function compareHands(a, b){
     let typeA = getHandType(a);
     let typeB = getHandType(b);
     if(typeA === null || typeB === null) return null;
     if(typeA !== typeB) return null;
     if(a.length !== b.length) return null;
+    if(handRankPriority[typeA] > handRankPriority[typeB]) return 1;
+    if(handRankPriority[typeA] < handRankPriority[typeB]) return -1;
     let maxA = getMaxCard(a);
     let maxB = getMaxCard(b);
     let valA = ranksOrder.indexOf(maxA.rank);
@@ -335,43 +521,7 @@
     return valA - valB;
   }
 
-  // 出牌：從手牌移除
-  function playCards(playerIdx, cards){
-    let hand = players[playerIdx].hand;
-    cards.forEach(c=>{
-      let idx = hand.findIndex(hc => hc.suit === c.suit && hc.rank === c.rank);
-      if(idx !== -1) hand.splice(idx,1);
-    });
-  }
-
-  // AI邏輯選牌: 選擇合法且能贏的最低牌組出牌，否則過牌
-  function aiPlayCards(playerIdx){
-    let hand = players[playerIdx].hand;
-    if(hand.length === 0) return null;
-    if(!lastPlayedCards){
-      // 自由出牌：從大牌型到小牌型
-      let typesPriority = ["straight", "pair", "single"];
-      for(let t of typesPriority){
-        for(let len = t === "straight" ? 5 : t === "pair" ? 2 : 1; len <= hand.length; len++){
-          let combos = getAllCombos(hand, len).filter(c => getHandType(c) === t);
-          if(combos.length){
-            combos.sort((a,b) => compareHands(a,b));
-            return combos[0];
-          }
-        }
-      }
-      return [hand[0]]; // 最後出單張
-    }
-    let lastType = getHandType(lastPlayedCards);
-    let lastLen = lastPlayedCards.length;
-    let candidates = getAllCombos(hand, lastLen).filter(c => getHandType(c) === lastType && compareHands(c, lastPlayedCards) > 0);
-    if(candidates.length){
-      candidates.sort((a,b) => compareHands(a,b));
-      return candidates[0];
-    }
-    return null;
-  }
-
+  /* 利用組合找出指定數量所有組合 */
   function getAllCombos(arr, n){
     let result = [];
     function backtrack(start, combo){
@@ -389,9 +539,126 @@
     return result;
   }
 
-  btnPlay.onclick = () => {
-    if(currentPlayer !== 0 || selectedCards.size === 0) return;
+  /* 找指定牌型組合 */
+  function findPlayableHands(hand, targetType, targetLen){
+    let combos = getAllCombos(hand, targetLen);
+    return combos.filter(c => getHandType(c) === targetType);
+  }
 
+  /* AI出牌 */
+  function aiPlayCards(playerIdx){
+    let hand = players[playerIdx].hand;
+    if(hand.length === 0) return null;
+
+    if(!lastPlayedCards){
+      // 無需壓制，依優先牌型出一手最小牌
+      const priorities = ["bomb", "truck", "straightPairs", "straight", "tripleWithSingle", "triple", "pair", "single"];
+      for(let t of priorities){
+        for(let len = t === "straight" || t === "straightPairs" || t === "truck" ? 5 : t === "bomb" ? 4 : t === "tripleWithSingle" ? 4 : t === "pair" ? 2 : 1; len <= hand.length; len++){
+          let plays = findPlayableHands(hand, t, len);
+          if(plays.length > 0){
+            plays.sort((a,b) => compareHands(a,b));
+            return plays[0];
+          }
+        }
+      }
+      return [hand[0]];
+    }
+
+    let lastType = getHandType(lastPlayedCards);
+    let lastLen = lastPlayedCards.length;
+    let candidates = findPlayableHands(hand, lastType, lastLen).filter(c => compareHands(c, lastPlayedCards) > 0);
+    if(candidates.length){
+      candidates.sort((a,b) => compareHands(a,b));
+      return candidates[0];
+    }
+    // 嘗試炸彈出場（可壓任意牌型）
+    let bombs = findPlayableHands(hand, "bomb", 4).filter(b => !lastPlayedCards || handRankPriority["bomb"] > handRankPriority[getHandType(lastPlayedCards)]);
+    if(bombs.length){
+      bombs.sort((a,b) => compareHands(a,b));
+      return bombs[0];
+    }
+    return null;
+  }
+
+  /* 出牌 */
+  function playCards(playerIdx, cards){
+    let hand = players[playerIdx].hand;
+    cards.forEach(c=>{
+      let idx = hand.findIndex(hc => hc.suit === c.suit && hc.rank === c.rank);
+      if(idx !== -1) hand.splice(idx, 1);
+    });
+  }
+
+  /* 刷新畫面 */
+  function updateAll(){
+    renderPlayerCards();
+    renderOpponents();
+    renderPlayArea();
+  }
+
+  /* 玩家手牌渲染（選牌往上拉但依然重疊） */
+  function renderPlayerCards(){
+    playerHandDiv.innerHTML = "";
+    players[0].hand.forEach(card => {
+      let div = document.createElement("div");
+      div.className = "card";
+      div.style.backgroundImage = `url(${getCardImageURL(card)})`;
+      let key = card.suit+card.rank;
+      if(selectedCards.has(key)){
+        div.classList.add("selected");
+      }
+      div.onclick = () => {
+        if(currentPlayer !== 0) return;
+        if(selectedCards.has(key)){
+          selectedCards.delete(key);
+          div.classList.remove("selected");
+        } else {
+          selectedCards.add(key);
+          div.classList.add("selected");
+        }
+        btnPlay.disabled = selectedCards.size === 0;
+      };
+      playerHandDiv.appendChild(div);
+    });
+  }
+
+  /* 對手牌渲染 */
+  function renderOpponents(){
+    for(let i=1; i<=3; i++){
+      let player = players[i];
+      player.cardRow.innerHTML = "";
+      for(let j=0; j<player.hand.length; j++){
+        let backDiv = document.createElement("div");
+        backDiv.className = "card-back";
+        player.cardRow.appendChild(backDiv);
+      }
+      player.countSpan.textContent = player.hand.length;
+    }
+  }
+
+  /* 出牌區展示 */
+  function renderPlayArea(){
+    playArea.innerHTML = "";
+    if(!lastPlayedCards || lastPlayedCards.length === 0){
+      playArea.textContent = "暫無出牌";
+      return;
+    }
+    lastPlayedCards.forEach(card => {
+      let div = document.createElement("div");
+      div.className = "played-card";
+      div.style.backgroundImage = `url(${getCardImageURL(card)})`;
+      playArea.appendChild(div);
+    });
+  }
+
+  /* 按鈕事件 */
+  btnPlay.onclick = () => {
+    if(currentPlayer !== 0) return;
+    if(selectedCards.size === 0) {
+      alert("請選擇牌！");
+      return;
+    }
     let cardsToPlay = Array.from(selectedCards).map(k => {
       let s = k[0];
       let r = Number(k.slice(1));
@@ -400,17 +667,17 @@
 
     let handType = getHandType(cardsToPlay);
     if(!handType){
-      alert("牌型不合法");
+      alert("牌型不合法！");
       return;
     }
 
     if(lastPlayedCards){
       let lastType = getHandType(lastPlayedCards);
       if(handType !== lastType || cardsToPlay.length !== lastPlayedCards.length){
-        alert("必須出同牌型和相同張數的牌！");
+        alert("必須出同牌型及相同張數的牌！");
         return;
       }
-      if(compareHands(cardsToPlay, lastPlayedCards) <= 0){
+      if(compareHands(cardsToPlay, lastPlayedCards) <= 0) {
         alert("必須出比上家更大的牌！");
         return;
       }
@@ -424,14 +691,14 @@
     btnPlay.disabled = true;
     btnPass.disabled = true;
 
-    infoDiv.textContent = `你出了 ${cardsToPlay.map(c => suitNames[c.suit] + rankToString(c.rank)).join(" ")}`;
+    infoDiv.textContent = `你出了 ${cardsToPlay.map(c => suitNames[c.suit]+rankToString(c.rank)).join(" ")}`;
     updateAll();
 
     if(players[0].hand.length === 0){
-      endGame("你");
+      gameStarted = false;
+      showEndDialog("你");
       return;
     }
-
     currentPlayer = 1;
     setTimeout(aiTurn, 1400);
   };
@@ -454,37 +721,34 @@
     selectedCards.clear();
     let hintCards = null;
     if(!lastPlayedCards){
-      // 自由出牌優先順序
-      let order = ["straight", "pair", "single"];
-      for(let t of order){
-        for(let len = t==="straight"?5:t==="pair"?2:1; len <= players[0].hand.length; len++){
-          let combos = getAllCombos(players[0].hand, len).filter(c => getHandType(c) === t);
+      let priorities = ["bomb", "truck", "straightPairs", "straight", "tripleWithSingle", "triple", "pair", "single"];
+      outer: for(let t of priorities){
+        for(let len=t==="straight"||t==="straightPairs"||t==="truck"?5:(t==="bomb"?4:(t==="tripleWithSingle"?4:(t==="pair"?2:1))); len<=players[0].hand.length; len++){
+          let combos = getAllCombos(players[0].hand,len).filter(c => getHandType(c) === t);
           if(combos.length){
             hintCards = combos[0];
-            break;
+            break outer;
           }
         }
-        if(hintCards) break;
       }
     }else{
       let lastType = getHandType(lastPlayedCards);
-      let length = lastPlayedCards.length;
-      let combos = getAllCombos(players[0].hand, length).filter(c => getHandType(c) === lastType && compareHands(c, lastPlayedCards) > 0);
-      if(combos.length) hintCards = combos[0];
+      hintCards = getAllCombos(players[0].hand,lastPlayedCards.length).filter(c => getHandType(c) === lastType && compareHands(c, lastPlayedCards) > 0)[0];
     }
     if(hintCards){
-      hintCards.forEach(c => selectedCards.add(c.suit + c.rank));
+      hintCards.forEach(c => selectedCards.add(c.suit+ c.rank));
       updateAll();
       btnPlay.disabled = false;
       btnPass.disabled = false;
-      infoDiv.textContent = "已提示合法牌，請出牌或過牌";
+      infoDiv.textContent = "AI幫你選牌，請出牌或過牌";
     }else{
-      infoDiv.textContent = "沒有合法牌，建議過牌";
+      infoDiv.textContent = "無合法牌，建議過牌";
     }
   };
 
+  /* AI回合 */
   function aiTurn(){
-    infoDiv.textContent = players[currentPlayer].name + " 正在思考...";
+    infoDiv.textContent = players[currentPlayer].name + " 正在思考…";
     btnPlay.disabled = true;
     btnPass.disabled = true;
     btnHint.disabled = true;
@@ -496,50 +760,65 @@
         lastPlayedCards = cardsToPlay;
         lastPlayer = currentPlayer;
         passCount = 0;
-        infoDiv.textContent = players[currentPlayer].name + " 出了 " + cardsToPlay.map(c=>suitNames[c.suit]+rankToString(c.rank)).join(" ");
+        infoDiv.textContent = players[currentPlayer].name + " 出了 " + cardsToPlay.map(c => suitNames[c.suit] + rankToString(c.rank)).join(" ");
       } else {
         passCount++;
         infoDiv.textContent = players[currentPlayer].name + " 過牌";
       }
       updateAll();
 
-      if(players[currentPlayer].hand.length === 0){
-        endGame(players[currentPlayer].name);
+      if(players[currentPlayer].hand.length === 0) {
+        gameStarted = false;
+        showEndDialog(players[currentPlayer].name);
         return;
       }
 
       if(passCount >= 3){
         lastPlayedCards = null;
         passCount = 0;
-        infoDiv.textContent += " （牌局重置，請重新出牌）";
-        updateAll();
+        infoDiv.textContent += "（牌局重置，請重新出牌）";
       }
 
       currentPlayer = (currentPlayer + 1) % players.length;
 
-      if(currentPlayer === 0){
+      if(gameStarted && currentPlayer === 0){
         btnPlay.disabled = true;
         btnPass.disabled = false;
         btnHint.disabled = false;
         infoDiv.textContent += " 輪到你出牌";
-      } else {
+      } else if(gameStarted){
         aiTurn();
       }
     }, 1500);
   }
 
-  function endGame(winner){
-    infoDiv.textContent = `遊戲結束，${winner} 獲勝！`;
-    gameStarted = false;
+  /* 遊戲結束彈窗 */
+  function showEndDialog(winner){
+    endMessage.textContent = `${winner} 贏了！`;
+    endDialog.classList.add("show");
+  }
+  function hideEndDialog(){
+    endDialog.classList.remove("show");
   }
 
-  function updateAll(){
-    renderPlayerCards();
-    renderOpponents();
-    renderPlayArea();
+  btnReplay.onclick = () => {
+    hideEndDialog();
+    startGame();
+  }
+  btnBack.onclick = () => {
+    hideEndDialog();
+    goStartScreen();
   }
 
-  // 遊戲啟動
+  /* 取得梅花3玩家先手 */
+  function whoStarts(){
+    for(let i=0; i<players.length; i++){
+      if(players[i].hand.find(c => c.suit==="C" && c.rank===3)) return i;
+    }
+    return 0;
+  }
+
+  /* 開始遊戲 */
   function startGame(){
     let deck = createDeck();
     shuffle(deck);
@@ -548,22 +827,45 @@
       players[i%4].hand.push(deck[i]);
     }
     players.forEach(p => p.hand = sortCards(p.hand));
-    currentPlayer = 0;
+    currentPlayer = whoStarts();
     lastPlayedCards = null;
     lastPlayer = null;
     passCount = 0;
     gameStarted = true;
     selectedCards.clear();
+
     btnPlay.disabled = true;
-    btnPass.disabled = false;
-    btnHint.disabled = false;
-    infoDiv.textContent = "遊戲開始，輪到你出牌";
+    btnPass.disabled = currentPlayer !== 0;
+    btnHint.disabled = currentPlayer !== 0;
+
+    if(currentPlayer === 0){
+      infoDiv.textContent = "遊戲開始，輪到你先出牌（梅花3先手）";
+    } else{
+      infoDiv.textContent = `${players[currentPlayer].name} 先出牌（梅花3先手）`;
+      setTimeout(aiTurn, 1400);
+    }
+
     updateAll();
+    goGameScreen();
   }
 
-  // 遊戲開始
-  startGame();
+  /* 顯示/隱藏頁面 */
+  function goStartScreen(){
+    gameScreen.style.display = "none";
+    startScreen.style.display = "flex";
+    infoDiv.textContent = "請按開始";
+  }
+  function goGameScreen(){
+    startScreen.style.display = "none";
+    gameScreen.style.display = "flex";
+  }
 
+  /* 初始化 */
+  goStartScreen();
+
+  startBtn.onclick = () => {
+    startGame();
+  }
 })();
 </script>
 </body>
