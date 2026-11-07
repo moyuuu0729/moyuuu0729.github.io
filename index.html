@@ -1,872 +1,797 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>大老二 完整版（梅花3先手+選牌微調+遊戲控制）</title>
-<style>
-  * {box-sizing: border-box;}
-  html,body {
-    margin: 0; padding: 0; height: 100%; background: #076; font-family: "微軟正黑體", sans-serif; color: #fff;
-    display: flex; flex-direction: column; user-select:none;
-  }
-  #container {
-    flex: 1; display: flex; flex-direction: column; align-items:center; justify-content: center;
-  }
-  /* 首頁 */
-  #startScreen {
-    display: flex; flex-direction: column; align-items:center; justify-content: center;
-    height: 100vh; width: 100vw; background: #184;
-  }
-  #startBtn {
-    cursor: pointer; font-size: 26px; padding: 14px 48px; border-radius: 12px;
-    background: #0a8; border:none; color:#fff; transition: background 0.3s;
-    user-select:none;
-  }
-  #startBtn:hover {
-    background: #0c9;
-  }
-  /* 遊戲區 */
-  #gameScreen {
-    display: none; flex-direction: column; align-items:center; width: 100vw; max-width: 840px; flex-grow: 1;
-    background: #184; box-shadow: inset 0 0 50px #003300; padding: 16px;
-  }
-  /* 對手名片 */
-  .playerGroup {
-    background: rgba(0,80,0,0.7);
-    border-radius: 14px;
-    padding: 8px 16px;
-    margin: 6px auto;
-    box-shadow: 0 0 15px #0e6 inset;
-    user-select:none;
-    width: 100%;
-    max-width: 760px;
-    display: flex; justify-content: flex-start; align-items: center;
-    gap: 12px;
-  }
-  .playerGroup .name {
-    font-weight: 700;
-    font-size: 18px;
-    color: #ade;
-    flex-shrink: 0;
-    min-width: 80px;
-  }
-  .playerGroup .count {
-    margin-left: auto;
-    font-size: 16px;
-    color: #bbf;
-  }
-  .card-row {
-    display: flex; position: relative;
-    overflow: hidden;
-    flex: 1;
-    max-width: 600px;
-  }
-  .card-back {
-    width: 72px; height: 100px;
-    border-radius: 8px;
-    background-image: url("https://deckofcardsapi.com/static/img/back.png");
-    background-size: cover;
-    box-shadow: 0 2px 8px #0009;
-    margin-left: -58px;
-    cursor: default;
-    transition: transform 0.3s;
-  }
-  .card-back:first-child {
-    margin-left: 0;
-  }
-  /* 出牌區 */
-  #playArea {
-    margin: 14px 0 8px 0;
-    min-height: 130px;
-    width: 760px;
-    max-width: 95vw;
-    background: #0a2;
-    border-radius: 14px;
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    box-shadow: inset 0 0 26px #003300;
-    position: relative;
-  }
-  .played-card {
-    width: 84px; height: 118px;
-    border-radius: 12px;
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    box-shadow: 0 5px 10px #001900;
-    animation: flyCard 0.6s ease forwards;
-  }
-  @keyframes flyCard {
-    0%   { transform: translateY(120px) scale(0.6) rotate(15deg); opacity: 0; }
-    100% { transform: translateY(0) scale(1) rotate(0); opacity: 1; }
-  }
-  /* 玩家手牌 */
-  #playerHand {
-    position: relative;
-    height: 140px;
-    max-width: 760px;
-    user-select: none;
-    display: flex;
-    justify-content: center;
-    align-items: flex-end;
-    padding-bottom: 16px;
-  }
-  #playerHand .card {
-    width: 80px;
-    height: 112px;
-    border-radius: 12px;
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.9);
-    cursor: pointer;
-    margin-left: -64px;
-    position: relative;
-    transition: transform 0.25s ease, z-index 0.25s ease;
-    z-index: 1;
-  }
-  #playerHand .card:first-child {
-    margin-left: 0;
-  }
-  #playerHand .card.selected {
-    transform: translateY(-22px);
-    z-index: 10;
-  }
-  /* 按鈕群 */
-  #controls {
-    margin: 8px auto 20px auto;
-    display: flex;
-    gap: 18px;
-    justify-content: center;
-    max-width: 760px;
-  }
-  #controls button {
-    border: none;
-    border-radius: 12px;
-    padding: 14px 28px;
-    font-size: 18px;
-    background: #0a8;
-    cursor: pointer;
-    color: #fff;
-    transition: background-color 0.25s ease;
-    user-select:none;
-  }
-  #controls button:disabled {
-    background: #555;
-    cursor: not-allowed;
-  }
-  #controls button:hover:not(:disabled) {
-    background: #0c9;
-  }
-  /* 文字提示 */
-  #info {
-    margin: 0 auto 8px auto;
-    max-width: 760px;
-    font-size: 22px;
-    color: #ffd;
-    min-height: 32px;
-    user-select:none;
-    text-align: center;
-  }
-  /* 結束遊戲彈窗 */
-  #endDialog {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.75);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 99;
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-  #endDialog.show {
-    visibility: visible;
-    opacity: 1;
-  }
-  #endContent {
-    background: #092;
-    border-radius: 16px;
-    padding: 32px 48px;
-    text-align: center;
-    user-select:none;
-  }
-  #endContent h2 {
-    font-size: 28px;
-    margin-bottom: 24px;
-    color: #ffd;
-  }
-  #endContent button {
-    margin: 0 12px;
-    font-size: 20px;
-    padding: 12px 24px;
-    border:none;
-    border-radius: 12px;
-    cursor: pointer;
-    background: #0a8;
-    color: #fff;
-    transition: background-color 0.25s;
-  }
-  #endContent button:hover {
-    background: #0c9;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>盲盒貨櫃競標完整遊戲</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.9.6/lottie.min.js"></script>
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: #F5F5F5; color: #333;
+      display: flex; flex-direction: column; align-items: center;
+      margin: 0; padding: 20px; min-height: 100vh;
+      transition: background-color 0.5s, color 0.5s;
+    }
+    body.dark {
+      background: #222; color: #eee;
+    }
+    #container {
+      width: 420px;
+      background: #fff;
+      border-radius: 15px;
+      box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+      padding: 25px;
+      text-align: center;
+      transition: background-color 0.5s, color 0.5s;
+    }
+    body.dark #container {
+      background: #333; color: #eee;
+    }
+    h1 {
+      font-size: 2.4rem; margin-bottom: 15px; color: #FF6F31;
+    }
+    button {
+      background: #FF6F31;
+      border: none;
+      color: #fff;
+      padding: 10px 30px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      margin: 10px 5px;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background: #FF845A;
+    }
+    button:disabled {
+      background: #ccc; cursor: not-allowed;
+    }
+    /* 暱稱輸入 */
+    #nameEntry {
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    #playerNameInput {
+      padding: 8px 12px;
+      font-size: 1rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      width: 240px;
+    }
+    #nameError {
+      color: #d33;
+      margin-top: 6px;
+      display: none;
+    }
+    /* 遊戲區 */
+    #gameArea {
+      display: none; margin-top: 15px;
+    }
+    #boxImage, #animationContainer {
+      width: 250px; height: 250px; margin: 10px auto 0 auto;
+    }
+    #animationContainer {
+      display: none;
+    }
+    #infoPanel div {
+      margin-bottom: 10px;
+      font-size: 1.1rem;
+    }
+    #bidButtons button {
+      margin: 5px;
+      width: 80px;
+    }
+    #timer {
+      font-size: 1.6rem;
+      color: #FF6F31;
+      font-weight: bold;
+      margin: 20px 0;
+    }
+    #message {
+      height: 30px;
+      margin-top: 12px;
+      font-weight: 600;
+    }
+    /* 設定面板 */
+    #settingsModal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+    #settingsContent {
+      background: #fff; color: #333;
+      width: 320px; padding: 25px;
+      border-radius: 15px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      transition: background-color 0.5s, color 0.5s;
+    }
+    body.dark #settingsContent {
+      background: #444; color: #eee;
+    }
+    #settingsContent h3 {
+      margin-top: 0;
+      margin-bottom: 20px;
+    }
+    .settings-row {
+      margin-bottom: 15px;
+      text-align: left;
+    }
+    label {
+      font-weight: 600;
+    }
+    select, input[type=checkbox] {
+      margin-top: 6px;
+    }
+    #settingsClose {
+      cursor: pointer;
+      width: 100%;
+      background: #FF6F31;
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: 700;
+      box-shadow: 0 5px 10px rgba(255,111,49,0.6);
+      transition: background-color 0.3s;
+    }
+    #settingsClose:hover {
+      background: #FF845A;
+    }
+  </style>
 </head>
-
 <body>
   <div id="container">
-    <!-- 首頁 -->
-    <div id="startScreen">
-      <button id="startBtn">開始遊戲</button>
+    <h1>盲盒貨櫃競標遊戲</h1>
+    <div id="nameEntry">
+      <label for="playerNameInput" style="font-weight: 700;">請輸入暱稱：</label><br/>
+      <input type="text" id="playerNameInput" maxlength="12" placeholder="最多12字" />
+      <button id="nameConfirmBtn">確定</button>
+      <div id="nameError"></div>
+    </div>
+    <button id="btnStart" disabled>開始遊戲</button>
+    <button id="btnSettings">設定</button>
+    <button id="btnSaveLoad">匯出存檔</button>
+    <button id="btnLoadSave">載入存檔</button>
+
+    <div id="gameArea">
+      <div id="boxImage" title="貨櫃盲盒" style="background:url('https://cdn-icons-png.flaticon.com/512/616/616408.png') no-repeat center/contain;"></div>
+      <div id="animationContainer"></div>
+
+      <div id="infoPanel">
+        <div>你的資金：<span id="playerMoney">1000</span></div>
+        <div>AI 資金：<span id="aiMoney">1000</span></div>
+        <div>目前最高出價：<span id="highestBid">0</span> （最高出價者：<span id="highestBidder">無</span>）</div>
+      </div>
+
+      <div id="bidButtons">
+        <button id="bidPlus1">出價 +1</button>
+        <button id="bidPlus5">出價 +5</button>
+        <button id="bidPlus10">出價 +10</button>
+        <button id="btnPass" style="background-color:#888;">放棄競標</button>
+      </div>
+
+      <div id="timer">倒數計時：30</div>
+      <div id="message"></div>
     </div>
 
-    <!-- 遊戲畫面 -->
-    <div id="gameScreen">
-      <div class="playerGroup" id="player1">
-        <div class="name">電腦 1</div>
-        <div class="card-row" id="opponentTopCards"></div>
-        <div class="count">牌數：<span id="countTop">13</span></div>
-      </div>
-      <div class="playerGroup" id="player2">
-        <div class="name">電腦 2</div>
-        <div class="card-row" id="opponentLeftCards"></div>
-        <div class="count">牌數：<span id="countLeft">13</span></div>
-      </div>
-      <div class="playerGroup" id="player3">
-        <div class="name">電腦 3</div>
-        <div class="card-row" id="opponentRightCards"></div>
-        <div class="count">牌數：<span id="countRight">13</span></div>
-      </div>
-
-      <div id="playArea">暫無出牌</div>
-
-      <div id="playerHand"></div>
-
-      <div id="controls">
-        <button id="btnPlay" disabled>出牌</button>
-        <button id="btnPass" disabled>過牌</button>
-        <button id="btnHint">提示</button>
-      </div>
-
-      <div id="info">請準備開始</div>
-    </div>
-  </div>
-
-  <div id="endDialog">
-    <div id="endContent">
-      <h2 id="endMessage"></h2>
-      <button id="btnReplay">再來一局</button>
-      <button id="btnBack">回首頁</button>
-    </div>
   </div>
 
 <script>
-(() => {
-  /* 牌＆遊戲變數與函式 */
-  const suits = ["C","D","H","S"];
-  const suitNames = {C:"♣",D:"♦",H:"♥",S:"♠"};
-  const ranksOrder = [3,4,5,6,7,8,9,10,11,12,13,1,2]; // 3最小，2最大
+  // ===== 全域變數與元件綁定 =====
+  let playerName = '';
+  let player = { money: 1000 };
+  let AI = { money: 1000, active: true };
+  let highestBid = 0;
+  let highestBidder = null;
+  let countdown = 30;
+  let biddingActive = false;
+  let currentRound = 0;
+  let totalRounds = 5;
+  let playerTotalValue = 0;
+  let playerInventory = [];
+  let settings = { music: true, sfx: true, theme: 'light', difficulty: 'medium' };
 
-  const players = [
-    {name:"你", hand:[], isHuman:true, cardRow:null, countSpan:null},
-    {name:"電腦 1", hand:[], isHuman:false, cardRow:null, countSpan:null},
-    {name:"電腦 2", hand:[], isHuman:false, cardRow:null, countSpan:null},
-    {name:"電腦 3", hand:[], isHuman:false, cardRow:null, countSpan:null},
+  // DOM 元件
+  const nameEntryDiv = document.getElementById('nameEntry');
+  const playerNameInput = document.getElementById('playerNameInput');
+  const nameConfirmBtn = document.getElementById('nameConfirmBtn');
+  const nameErrorDiv = document.getElementById('nameError');
+
+  const btnStart = document.getElementById('btnStart');
+  const btnSettings = document.getElementById('btnSettings');
+  const btnSaveLoad = document.getElementById('btnSaveLoad');
+  const btnLoadSave = document.getElementById('btnLoadSave');
+
+  const gameArea = document.getElementById('gameArea');
+  const boxImage = document.getElementById('boxImage');
+  const animationContainer = document.getElementById('animationContainer');
+  const playerMoneySpan = document.getElementById('playerMoney');
+  const aiMoneySpan = document.getElementById('aiMoney');
+  const highestBidSpan = document.getElementById('highestBid');
+  const highestBidderSpan = document.getElementById('highestBidder');
+  const timerDiv = document.getElementById('timer');
+  const messageDiv = document.getElementById('message');
+
+  const bidPlus1 = document.getElementById('bidPlus1');
+  const bidPlus5 = document.getElementById('bidPlus5');
+  const bidPlus10 = document.getElementById('bidPlus10');
+  const btnPass = document.getElementById('btnPass');
+
+  const settingsModal = document.getElementById('settingsModal');
+  const settingsClose = document.getElementById('settingsClose');
+  const toggleMusic = document.getElementById('toggleMusic');
+  const toggleSfx = document.getElementById('toggleSfx');
+  const themeSelect = document.getElementById('themeSelect');
+  const difficultySelect = document.getElementById('difficultySelect');
+
+  const bgMusic = document.getElementById('bgMusic');
+  const clickSfx = document.getElementById('clickSfx');
+  const openBoxSfx = document.getElementById('openBoxSfx');
+
+  let animation = null;
+  let countdownInterval = null;
+
+  // ===== 暱稱輸入事件 =====
+  nameConfirmBtn.onclick = () => {
+    const name = playerNameInput.value.trim();
+    if(name.length < 2) {
+      nameErrorDiv.textContent = '暱稱太短，請至少輸入2個字';
+      nameErrorDiv.style.display = 'block';
+      return;
+    }
+    if(name.length > 12) {
+      nameErrorDiv.textContent = '暱稱過長，請勿超過12字';
+      nameErrorDiv.style.display = 'block';
+      return;
+    }
+    nameErrorDiv.style.display = 'none';
+    playerName = name;
+    savePlayerName(playerName);
+    nameEntryDiv.style.display = 'none';
+    btnStart.disabled = false;
+    alert(`歡迎，${playerName}，祝你競標順利！`);
+  };
+
+  // ===== 儲存與讀取暱稱 =====
+  function savePlayerName(name) {
+    localStorage.setItem('blindbox_playerName', name);
+  }
+  function loadPlayerName() {
+    const saved = localStorage.getItem('blindbox_playerName');
+    if(saved) {
+      playerName = saved;
+      playerNameInput.value = playerName;
+      nameEntryDiv.style.display = 'none';
+      btnStart.disabled = false;
+    }
+  }
+
+  // ===== 更新介面 =====
+  function updateDisplay() {
+    playerMoneySpan.textContent = player.money;
+    aiMoneySpan.textContent = AI.money;
+    highestBidSpan.textContent = highestBid;
+    highestBidderSpan.textContent = highestBidder ? highestBidder : "無";
+    timerDiv.textContent = `倒數計時：${countdown}`;
+  }
+
+  function disableBidButtons(disable) {
+    bidPlus1.disabled = disable;
+    bidPlus5.disabled = disable;
+    bidPlus10.disabled = disable;
+    btnPass.disabled = disable;
+  }
+
+  // ===== 開箱動畫 =====
+  function resetAnimation() {
+    if(animation) {
+      animation.destroy();
+      animation = null;
+    }
+    animationContainer.style.display = 'none';
+    boxImage.style.display = 'block';
+  }
+
+  function playOpenBoxAnimation(callback) {
+    playOpenBoxSound();
+    boxImage.style.display = 'none';
+    animationContainer.style.display = 'block';
+    animation = lottie.loadAnimation({
+      container: animationContainer,
+      renderer:'svg', loop:false, autoplay:true,
+      path:'https://assets6.lottiefiles.com/packages/lf20_hXJ81P.json'
+    });
+    animation.addEventListener('complete', () => {
+      if(callback) callback();
+      resetAnimation();
+    });
+  }
+
+  // ===== 音樂及音效 =====
+  function playMusic() {
+    if(settings.music){
+      bgMusic.volume = 0.3;
+      bgMusic.play().catch(()=>{});
+    } else {
+      bgMusic.pause();
+    }
+  }
+  function playClick() {
+    if(settings.sfx){
+      clickSfx.currentTime = 0;
+      clickSfx.play();
+    }
+  }
+  function playOpenBoxSound() {
+    if(settings.sfx){
+      openBoxSfx.currentTime = 0;
+      openBoxSfx.play();
+    }
+  }
+
+  // ===== 競標核心 =====
+  function bid(amount, bidder) {
+    if(!biddingActive) return;
+    const newBid = highestBid + amount;
+    if(bidder === playerName && player.money < newBid){
+      messageDiv.textContent = '資金不足，無法出價！';
+      return;
+    }
+    if(bidder === 'AI' && AI.money < newBid){
+      AI.active = false;
+      messageDiv.textContent = 'AI 資金不足放棄競標';
+      return;
+    }
+    if(newBid <= highestBid){
+      messageDiv.textContent = '出價須高於目前最高出價！';
+      return;
+    }
+    highestBid = newBid;
+    highestBidder = bidder;
+    countdown = 15;
+    messageDiv.textContent = `${bidder} 出價: ${highestBid}元`;
+    updateDisplay();
+  }
+
+  function aiBid() {
+    if(!AI.active) return;
+    if(Math.random() < 0.7){
+      const bidIncrement = Math.min(10, AI.money - highestBid);
+      if(bidIncrement <= 0){
+        AI.active = false;
+        messageDiv.textContent = 'AI 放棄競標';
+        return;
+      }
+      const increment = Math.floor(Math.random() * bidIncrement) + 1;
+      bid(increment, 'AI');
+    }
+  }
+
+  function startCountdown() {
+    clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+      countdown--;
+      if(biddingActive && AI.active && countdown % 5 === 0 && countdown > 10){
+        aiBid();
+      }
+      if(countdown <= 0){
+        endBidding();
+      }
+      updateDisplay();
+    }, 1000);
+  }
+
+  // ===== 結束與開箱 =====
+  function endBidding() {
+    biddingActive = false;
+    clearInterval(countdownInterval);
+    if(highestBidder === playerName){
+      player.money -= highestBid;
+      messageDiv.textContent = `${playerName} 贏得此貨櫃，花費${highestBid}資金！開箱中...`;
+      playOpenBoxAnimation(() => {
+        onOpenBox(() => setTimeout(resetGame, 3000));
+      });
+    }else if(highestBidder === 'AI'){
+      AI.money -= highestBid;
+      messageDiv.textContent = `AI 贏得此貨櫃，花費${highestBid}資金！請稍待下一輪。`;
+      setTimeout(resetGame, 4000);
+    }else{
+      messageDiv.textContent = "本輪無人競標，流標。請稍待下一輪。";
+      setTimeout(resetGame, 4000);
+    }
+    disableBidButtons(true);
+    updateDisplay();
+  }
+
+  // ===== 新一輪重置 =====
+  function resetGame() {
+    if(currentRound >= totalRounds){
+      showFinalResults();
+      return;
+    }
+    currentRound++;
+    AI.active = true;
+    highestBid = 0;
+    highestBidder = null;
+    countdown = 30;
+    biddingActive = true;
+    updateDisplay();
+    disableBidButtons(false);
+    resetAnimation();
+    startCountdown();
+    messageDiv.textContent = `第 ${currentRound} 輪競標開始，祝你好運！`;
+  }
+
+  // ===== 盲盒隨機獎品 =====
+  function getRandomPrize() {
+    const rand = Math.random();
+    if(rand < 0.5) {
+      return prizePool.filter(p => p.rarity === '普通')[Math.floor(Math.random() * 2)];
+    } else if(rand < 0.8) {
+      return prizePool.filter(p => p.rarity === '稀有')[Math.floor(Math.random() * 2)];
+    } else if(rand < 0.95) {
+      return prizePool.find(p => p.rarity === '史詩');
+    } else {
+      return prizePool.find(p => p.rarity === '傳說');
+    }
+  }
+
+  // 開箱處理
+  function onOpenBox(callback) {
+    const prize = getRandomPrize();
+    playerInventory.push(prize);
+    playerTotalValue += prize.value;
+    player.money += prize.value;
+    messageDiv.textContent = `${playerName} 開出：${prize.rarity} - ${prize.name}（價值 ${prize.value}）！`;
+    updateDisplay();
+    if(callback) callback();
+  }
+
+  // ===== 顯示最終結果 =====
+  function showFinalResults() {
+    gameArea.style.display = 'none';
+    alert(`遊戲結束！${playerName}在${totalRounds}輪中累積的貨櫃價值為${playerTotalValue}元！`);
+    updatePlayerLeaderboard(playerName, playerTotalValue);
+  }
+
+  // ===== 存檔匯出匯入 =====
+  // ...（此部分我稍後發送）
+
+  // ===== 設定面板控制 =====
+  // ...（此部分我稍後發送）
+
+  // ===== 玩家資訊更新 =====
+  // ...（此部分我稍後發送）
+
+  // ===== 事件綁定 =====
+  btnStart.onclick = () => {
+    playClick();
+    btnStart.style.display = 'none';
+    btnSettings.style.display = 'none';
+    btnSaveLoad.style.display = 'none';
+    btnLoadSave.style.display = 'none';
+    gameArea.style.display = 'block';
+    resetGame();
+  };
+
+  btnSettings.onclick = () => {
+    playClick();
+    loadSettings();
+    settingsModal.style.display = 'flex';
+  };
+
+  bidPlus1.onclick = () => { playClick(); bid(1, playerName); faqStep(); };
+  bidPlus5.onclick = () => { playClick(); bid(5, playerName); faqStep(); };
+  bidPlus10.onclick = () => { playClick(); bid(10, playerName); faqStep(); };
+  btnPass.onclick = () => {
+    playClick();
+    if(!biddingActive) return;
+    biddingActive = false;
+    clearInterval(countdownInterval);
+    messageDiv.textContent = `${playerName} 放棄本輪競標。`;
+    disableBidButtons(true);
+    setTimeout(resetGame, 3000);
+    faqStep();
+  };
+
+  // ===== 新手教學 =====
+  let tutorialStep = 0;
+  const tutorialMessages = [
+    '歡迎來到盲盒貨櫃競標遊戲！這裡顯示你的資金。',
+    '用「出價+1」增加競標價格。',
+    '也可以用「出價+5」或「出價+10」快速加價。',
+    '放棄競標請點「放棄競標」。',
+    '倒數計時提醒時間，祝你好運！',
+    '提示完畢，加油參與競標吧！'
+  ];
+  const tutorialDiv = document.createElement('div');
+  tutorialDiv.style.cssText = 'position:fixed; bottom:100px; width:420px; background:#FF6F31; color:#fff; padding:15px; border-radius:10px; font-weight:700; font-size:1.1rem; box-shadow:0 4px 12px rgba(255,111,49,0.9); text-align:center; user-select:none; left:50%; transform:translateX(-50%); z-index:1000';
+  document.body.appendChild(tutorialDiv);
+
+  function showTutorialStep() {
+    if (tutorialStep >= tutorialMessages.length) {
+      tutorialDiv.style.display = 'none';
+      return;
+    }
+    tutorialDiv.style.display = 'block';
+    tutorialDiv.textContent = tutorialMessages[tutorialStep];
+  }
+
+  function faqStep() {
+    tutorialStep++;
+    showTutorialStep();
+  }
+  showTutorialStep();
+
+  // ===== 音效控制 (示範) =====
+  function playClick() {
+    if(settings.sfx){
+      clickSfx.currentTime = 0;
+      clickSfx.play();
+    }
+  }
+  function playOpenBoxSound() {
+    if(settings.sfx){
+      openBoxSfx.currentTime = 0;
+      openBoxSfx.play();
+    }
+  }
+  function playMusic() {
+    if(settings.music){
+      bgMusic.volume = 0.3;
+      bgMusic.play().catch(()=>{});
+    } else {
+      bgMusic.pause();
+    }
+  }
+
+  window.onload = () => {
+    loadPlayerName();
+    loadSettings();
+    applyTheme(settings.theme);
+    playMusic();
+  };
+</script>
+<script>
+  // ===== 存檔匯出功能 =====
+  function exportSave() {
+    const saveData = {
+      playerName,
+      player,
+      AI,
+      highestBid,
+      highestBidder,
+      countdown,
+      biddingActive,
+      currentRound,
+      totalRounds,
+      playerTotalValue,
+      playerInventory,
+      settings
+    };
+    const dataStr = JSON.stringify(saveData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `blindbox_save_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ===== 存檔匯入功能 =====
+  function importSave(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        playerName = data.playerName ?? playerName;
+        player = data.player ?? player;
+        AI = data.AI ?? AI;
+        highestBid = data.highestBid ?? 0;
+        highestBidder = data.highestBidder ?? null;
+        countdown = data.countdown ?? 30;
+        biddingActive = data.biddingActive ?? false;
+        currentRound = data.currentRound ?? 0;
+        totalRounds = data.totalRounds ?? 5;
+        playerTotalValue = data.playerTotalValue ?? 0;
+        playerInventory = data.playerInventory ?? [];
+        settings = data.settings ?? settings;
+
+        // 更新相關UI
+        playerNameInput.value = playerName;
+        savePlayerName(playerName);
+        applyTheme(settings.theme);
+        toggleMusic.checked = settings.music;
+        toggleSfx.checked = settings.sfx;
+        themeSelect.value = settings.theme;
+        difficultySelect.value = settings.difficulty;
+
+        updateDisplay();
+
+        messageDiv.textContent = `成功載入遊戲進度，請點開始遊戲繼續。`;
+        biddingActive = false;
+        disableBidButtons(true);
+        gameArea.style.display = 'none';
+        btnStart.style.display = 'inline-block';
+        btnSettings.style.display = 'inline-block';
+        btnSaveLoad.style.display = 'inline-block';
+        btnLoadSave.style.display = 'inline-block';
+      } catch (error) {
+        alert('載入檔案失敗，請確認檔案格式正確');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // 綁定匯出匯入按鈕
+  btnSaveLoad.onclick = exportSave;
+  btnLoadSave.onclick = () => fileInput.click();
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      importSave(e.target.files[0]);
+      fileInput.value = '';
+    }
+  });
+
+  // ===== 設定面板控制 =====
+  toggleMusic.addEventListener('change', () => {
+    settings.music = toggleMusic.checked;
+    playMusic();
+    saveSettings();
+  });
+
+  toggleSfx.addEventListener('change', () => {
+    settings.sfx = toggleSfx.checked;
+    saveSettings();
+  });
+
+  themeSelect.addEventListener('change', () => {
+    settings.theme = themeSelect.value;
+    applyTheme(settings.theme);
+    saveSettings();
+  });
+
+  difficultySelect.addEventListener('change', () => {
+    settings.difficulty = difficultySelect.value;
+    saveSettings();
+  });
+
+  settingsClose.onclick = () => {
+    settingsModal.style.display = 'none';
+  };
+
+  // 儲存設定
+  function saveSettings() {
+    localStorage.setItem('blindbox_settings', JSON.stringify(settings));
+  }
+
+  // 載入設定
+  function loadSettings() {
+    const saved = localStorage.getItem('blindbox_settings');
+    if (saved) {
+      try {
+        settings = JSON.parse(saved);
+      } catch (e) {}
+    }
+    toggleMusic.checked = settings.music;
+    toggleSfx.checked = settings.sfx;
+    themeSelect.value = settings.theme;
+    difficultySelect.value = settings.difficulty;
+  }
+
+  // 主題套用
+  function applyTheme(theme) {
+    if (theme === 'dark') document.body.classList.add('dark');
+    else document.body.classList.remove('dark');
+  }
+
+</script>
+<script>
+  // ===== 排行榜系統 =====
+  const leaderboardKey = 'blindbox_leaderboard';
+
+  function loadLeaderboard() {
+    let data = [];
+    const stored = localStorage.getItem(leaderboardKey);
+    if (stored) {
+      try {
+        data = JSON.parse(stored);
+      } catch (e) {}
+    }
+    return data;
+  }
+
+  function saveLeaderboard(data) {
+    localStorage.setItem(leaderboardKey, JSON.stringify(data));
+  }
+
+  function updatePlayerLeaderboard(name, totalValue) {
+    const data = loadLeaderboard();
+    const index = data.findIndex(p => p.name === name);
+    if (index === -1) data.push({ name, totalValue });
+    else if (totalValue > data[index].totalValue) data[index].totalValue = totalValue;
+    saveLeaderboard(data);
+    updateLeaderboardUI();
+  }
+
+  function updateLeaderboardUI() {
+    const container = document.getElementById('leaderboardContainer');
+    const list = document.getElementById('leaderboardList');
+    const data = loadLeaderboard().sort((a, b) => b.totalValue - a.totalValue);
+    list.innerHTML = '';
+    if (data.length === 0) {
+      list.innerHTML = '<li>尚無記錄</li>';
+    } else {
+      data.slice(0, 5).forEach((item, i) => {
+        const li = document.createElement('li');
+        li.textContent = `${i + 1}. ${item.name} - 總貨櫃價值：${item.totalValue}`;
+        list.appendChild(li);
+      });
+    }
+    container.style.display = 'block';
+  }
+
+  document.getElementById('closeLeaderboard').onclick = () => {
+    document.getElementById('leaderboardContainer').style.display = 'none';
+  };
+
+  // ===== 商店系統 =====
+  const shopItems = [
+    { id: 1, name: "增價保證卡", description: "下一輪出價自動加倍", price: 100 },
+    { id: 2, name: "時間延長器", description: "下一輪競標時間加長10秒", price: 150 },
+    { id: 3, name: "AI干擾器", description: "降低AI出價積極度 30秒", price: 200 },
   ];
 
-  /* 畫面元素參考 */
-  const startScreen = document.getElementById("startScreen");
-  const startBtn = document.getElementById("startBtn");
-  const gameScreen = document.getElementById("gameScreen");
-  const playerHandDiv = document.getElementById("playerHand");
-  const infoDiv = document.getElementById("info");
-  const playArea = document.getElementById("playArea");
-  const btnPlay = document.getElementById("btnPlay");
-  const btnPass = document.getElementById("btnPass");
-  const btnHint = document.getElementById("btnHint");
-  const endDialog = document.getElementById("endDialog");
-  const endMessage = document.getElementById("endMessage");
-  const btnReplay = document.getElementById("btnReplay");
-  const btnBack = document.getElementById("btnBack");
+  let playerInventoryMap = {};
 
-  players[1].cardRow = document.getElementById("opponentTopCards");
-  players[1].countSpan = document.getElementById("countTop");
-  players[2].cardRow = document.getElementById("opponentLeftCards");
-  players[2].countSpan = document.getElementById("countLeft");
-  players[3].cardRow = document.getElementById("opponentRightCards");
-  players[3].countSpan = document.getElementById("countRight");
+  const btnShop = document.getElementById('btnShop');
+  const shopContainer = document.getElementById('shopContainer');
+  const shopList = document.getElementById('shopList');
+  const closeShop = document.getElementById('closeShop');
 
-  /* 遊戲狀態 */
-  let currentPlayer = 0;
-  let lastPlayedCards = null;
-  let lastPlayer = null;
-  let passCount = 0;
-  let gameStarted = false;
-  let selectedCards = new Set();
-
-  /* 工具函式 */
-  function createDeck(){
-    let deck = [];
-    for(let s of suits){
-      for(let r of ranksOrder){
-        deck.push({suit:s, rank:r, id:s+r});
-      }
-    }
-    return deck;
-  }
-
-  function shuffle(deck){
-    for(let i=deck.length-1; i>0; i--){
-      let j = Math.floor(Math.random()*(i+1));
-      [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-  }
-
-  function sortCards(cards){
-    return cards.slice().sort((a,b)=> {
-      let rA = ranksOrder.indexOf(a.rank);
-      let rB = ranksOrder.indexOf(b.rank);
-      if(rA !== rB) return rA-rB;
-      return suits.indexOf(a.suit)-suits.indexOf(b.suit);
-    });
-  }
-
-  function rankToString(rank){
-    if(rank===1) return "A";
-    if(rank===11) return "J";
-    if(rank===12) return "Q";
-    if(rank===13) return "K";
-    return rank.toString();
-  }
-
-  function getCardImageURL(card){
-    return `https://deckofcardsapi.com/static/img/${rankToString(card.rank)}${card.suit}.png`;
-  }
-
-  /* 對手牌渲染 */
-  function renderOpponents(){
-    for(let i=1; i<=3; i++){
-      let player = players[i];
-      player.cardRow.innerHTML = "";
-      // 對手牌背面，重疊排列
-      for(let j=0; j<player.hand.length; j++){
-        let div = document.createElement("div");
-        div.className = "card-back";
-        player.cardRow.appendChild(div);
-      }
-      player.countSpan.textContent = player.hand.length;
-    }
-  }
-
-  /* 玩家手牌渲染 */
-  function renderPlayerCards(){
-    playerHandDiv.innerHTML = "";
-    players[0].hand.forEach(card=>{
-      let div = document.createElement("div");
-      div.className = "card";
-      div.style.backgroundImage = `url(${getCardImageURL(card)})`;
-      let key = card.suit+card.rank;
-      if(selectedCards.has(key)) div.classList.add("selected");
-      div.onclick = () => {
-        if(currentPlayer !== 0) return;
-        if(selectedCards.has(key)){
-          selectedCards.delete(key);
-          div.classList.remove("selected");
-        }else{
-          selectedCards.add(key);
-          div.classList.add("selected");
-        }
-        btnPlay.disabled = selectedCards.size===0 ? true : false;
-      };
-      playerHandDiv.appendChild(div);
-    });
-  }
-
-  /* 出牌區顯示與動畫 */
-  function renderPlayArea(){
-    playArea.innerHTML = "";
-    if(!lastPlayedCards || lastPlayedCards.length === 0){
-      playArea.textContent = "暫無出牌";
-      return;
-    }
-    lastPlayedCards.forEach(card => {
-      let div = document.createElement("div");
-      div.className = "played-card";
-      div.style.backgroundImage = `url(${getCardImageURL(card)})`;
-      playArea.appendChild(div);
-    });
-  }
-
-  /* 更新所有畫面 */
-  function updateAll(){
-    renderPlayerCards();
-    renderOpponents();
-    renderPlayArea();
-  }
-
-  /* 找梅花３玩家做起手 */
-  function whoHasClubThree(){
-    for(let i=0; i<players.length; i++){
-      for(let card of players[i].hand){
-        if(card.suit === "C" && card.rank===3){
-          return i;
-        }
-      }
-    }
-    return 0;
-  }
-
-  /* 法規與AI與牌型判斷 */
-  function isSingle(cards){ return cards.length === 1; }
-  function isPair(cards){
-    if(cards.length !==2) return false;
-    return cards[0].rank === cards[1].rank;
-  }
-  function isTriple(cards){
-    if(cards.length !==3) return false;
-    return cards.every(c => c.rank === cards[0].rank);
-  }
-  function isTripleWithSingle(cards){
-    if(cards.length !==4) return false;
-    let count = {};
-    cards.forEach(c => count[c.rank] = (count[c.rank] ||0) +1);
-    return Object.values(count).some(c => c===3);
-  }
-  function isStraight(cards){
-    if(cards.length <5) return false;
-    let sorted = sortCards(cards);
-    for(let i=1; i<sorted.length; i++){
-      if(ranksOrder.indexOf(sorted[i].rank) !== ranksOrder.indexOf(sorted[i-1].rank)+1){
-        return false;
-      }
-    }
-    return true;
-  }
-  function isStraightPairs(cards){
-    if(cards.length <4 || cards.length % 2 !==0) return false;
-    let sorted = sortCards(cards);
-    for(let i=0; i<sorted.length; i+=2){
-      if(sorted[i].rank !== sorted[i+1].rank) return false;
-      if(i>0){
-        if(ranksOrder.indexOf(sorted[i].rank) !== ranksOrder.indexOf(sorted[i-2].rank)+1){
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-  function isTruck(cards){
-    if(!isStraightPairs(cards)) return false;
-    for(let i=0; i<cards.length; i+=2){
-      if(cards[i].suit !== cards[i+1].suit) return false;
-      if(i>1 && cards[i].suit !== cards[i-2].suit) return false;
-    }
-    return true;
-  }
-  function isBomb(cards){
-    if(cards.length !==4) return false;
-    let count = {};
-    cards.forEach(c => count[c.rank]=(count[c.rank]||0)+1);
-    return Object.values(count).some(c => c===4);
-  }
-
-  const handRankPriority = {
-    single:1,
-    pair:2,
-    triple:3,
-    tripleWithSingle:4,
-    straight:5,
-    straightPairs:6,
-    truck:7,
-    bomb:8
+  btnShop.onclick = () => {
+    renderShopItems();
+    shopContainer.style.display = 'block';
   };
 
-  function getHandType(cards){
-    if(cards.length === 0) return null;
-    if(isBomb(cards)) return "bomb";
-    if(isTruck(cards)) return "truck";
-    if(isStraightPairs(cards)) return "straightPairs";
-    if(isStraight(cards)) return "straight";
-    if(isTripleWithSingle(cards)) return "tripleWithSingle";
-    if(isTriple(cards)) return "triple";
-    if(isPair(cards)) return "pair";
-    if(isSingle(cards)) return "single";
-    return null;
-  }
+  closeShop.onclick = () => {
+    shopContainer.style.display = 'none';
+  };
 
-  function getMaxCard(cards){
-    let sorted = sortCards(cards);
-    return sorted[sorted.length - 1];
-  }
-
-  function compareHands(a, b){
-    let typeA = getHandType(a);
-    let typeB = getHandType(b);
-    if(typeA === null || typeB === null) return null;
-    if(typeA !== typeB) return null;
-    if(a.length !== b.length) return null;
-    if(handRankPriority[typeA] > handRankPriority[typeB]) return 1;
-    if(handRankPriority[typeA] < handRankPriority[typeB]) return -1;
-    let maxA = getMaxCard(a);
-    let maxB = getMaxCard(b);
-    let valA = ranksOrder.indexOf(maxA.rank);
-    let valB = ranksOrder.indexOf(maxB.rank);
-    if(valA === valB){
-      return suits.indexOf(maxA.suit) - suits.indexOf(maxB.suit);
-    }
-    return valA - valB;
-  }
-
-  /* 利用組合找出指定數量所有組合 */
-  function getAllCombos(arr, n){
-    let result = [];
-    function backtrack(start, combo){
-      if(combo.length === n){
-        result.push(combo.slice());
-        return;
-      }
-      for(let i=start; i<arr.length; i++){
-        combo.push(arr[i]);
-        backtrack(i+1, combo);
-        combo.pop();
-      }
-    }
-    backtrack(0, []);
-    return result;
-  }
-
-  /* 找指定牌型組合 */
-  function findPlayableHands(hand, targetType, targetLen){
-    let combos = getAllCombos(hand, targetLen);
-    return combos.filter(c => getHandType(c) === targetType);
-  }
-
-  /* AI出牌 */
-  function aiPlayCards(playerIdx){
-    let hand = players[playerIdx].hand;
-    if(hand.length === 0) return null;
-
-    if(!lastPlayedCards){
-      // 無需壓制，依優先牌型出一手最小牌
-      const priorities = ["bomb", "truck", "straightPairs", "straight", "tripleWithSingle", "triple", "pair", "single"];
-      for(let t of priorities){
-        for(let len = t === "straight" || t === "straightPairs" || t === "truck" ? 5 : t === "bomb" ? 4 : t === "tripleWithSingle" ? 4 : t === "pair" ? 2 : 1; len <= hand.length; len++){
-          let plays = findPlayableHands(hand, t, len);
-          if(plays.length > 0){
-            plays.sort((a,b) => compareHands(a,b));
-            return plays[0];
-          }
-        }
-      }
-      return [hand[0]];
-    }
-
-    let lastType = getHandType(lastPlayedCards);
-    let lastLen = lastPlayedCards.length;
-    let candidates = findPlayableHands(hand, lastType, lastLen).filter(c => compareHands(c, lastPlayedCards) > 0);
-    if(candidates.length){
-      candidates.sort((a,b) => compareHands(a,b));
-      return candidates[0];
-    }
-    // 嘗試炸彈出場（可壓任意牌型）
-    let bombs = findPlayableHands(hand, "bomb", 4).filter(b => !lastPlayedCards || handRankPriority["bomb"] > handRankPriority[getHandType(lastPlayedCards)]);
-    if(bombs.length){
-      bombs.sort((a,b) => compareHands(a,b));
-      return bombs[0];
-    }
-    return null;
-  }
-
-  /* 出牌 */
-  function playCards(playerIdx, cards){
-    let hand = players[playerIdx].hand;
-    cards.forEach(c=>{
-      let idx = hand.findIndex(hc => hc.suit === c.suit && hc.rank === c.rank);
-      if(idx !== -1) hand.splice(idx, 1);
-    });
-  }
-
-  /* 刷新畫面 */
-  function updateAll(){
-    renderPlayerCards();
-    renderOpponents();
-    renderPlayArea();
-  }
-
-  /* 玩家手牌渲染（選牌往上拉但依然重疊） */
-  function renderPlayerCards(){
-    playerHandDiv.innerHTML = "";
-    players[0].hand.forEach(card => {
-      let div = document.createElement("div");
-      div.className = "card";
-      div.style.backgroundImage = `url(${getCardImageURL(card)})`;
-      let key = card.suit+card.rank;
-      if(selectedCards.has(key)){
-        div.classList.add("selected");
-      }
-      div.onclick = () => {
-        if(currentPlayer !== 0) return;
-        if(selectedCards.has(key)){
-          selectedCards.delete(key);
-          div.classList.remove("selected");
+  function renderShopItems() {
+    shopList.innerHTML = '';
+    shopItems.forEach(item => {
+      const li = document.createElement('li');
+      li.textContent = `${item.name} - ${item.description}（價格: ${item.price}）`;
+      const buyBtn = document.createElement('button');
+      buyBtn.textContent = '購買';
+      buyBtn.disabled = player.money < item.price;
+      buyBtn.onclick = () => {
+        if (player.money >= item.price) {
+          player.money -= item.price;
+          playerInventoryMap[item.id] = (playerInventoryMap[item.id] || 0) + 1;
+          updatePlayerMoneyDisplay();
+          buyBtn.disabled = true;
+          alert(`成功購買 ${item.name}！`);
         } else {
-          selectedCards.add(key);
-          div.classList.add("selected");
+          alert('資金不足，無法購買！');
         }
-        btnPlay.disabled = selectedCards.size === 0;
       };
-      playerHandDiv.appendChild(div);
+      li.appendChild(buyBtn);
+      shopList.appendChild(li);
     });
   }
 
-  /* 對手牌渲染 */
-  function renderOpponents(){
-    for(let i=1; i<=3; i++){
-      let player = players[i];
-      player.cardRow.innerHTML = "";
-      for(let j=0; j<player.hand.length; j++){
-        let backDiv = document.createElement("div");
-        backDiv.className = "card-back";
-        player.cardRow.appendChild(backDiv);
-      }
-      player.countSpan.textContent = player.hand.length;
-    }
+  function updatePlayerMoneyDisplay() {
+    playerMoneySpan.textContent = player.money;
   }
 
-  /* 出牌區展示 */
-  function renderPlayArea(){
-    playArea.innerHTML = "";
-    if(!lastPlayedCards || lastPlayedCards.length === 0){
-      playArea.textContent = "暫無出牌";
-      return;
-    }
-    lastPlayedCards.forEach(card => {
-      let div = document.createElement("div");
-      div.className = "played-card";
-      div.style.backgroundImage = `url(${getCardImageURL(card)})`;
-      playArea.appendChild(div);
-    });
-  }
-
-  /* 按鈕事件 */
-  btnPlay.onclick = () => {
-    if(currentPlayer !== 0) return;
-    if(selectedCards.size === 0) {
-      alert("請選擇牌！");
-      return;
-    }
-    let cardsToPlay = Array.from(selectedCards).map(k => {
-      let s = k[0];
-      let r = Number(k.slice(1));
-      return players[0].hand.find(c => c.suit === s && c.rank === r);
-    });
-
-    let handType = getHandType(cardsToPlay);
-    if(!handType){
-      alert("牌型不合法！");
-      return;
-    }
-
-    if(lastPlayedCards){
-      let lastType = getHandType(lastPlayedCards);
-      if(handType !== lastType || cardsToPlay.length !== lastPlayedCards.length){
-        alert("必須出同牌型及相同張數的牌！");
-        return;
-      }
-      if(compareHands(cardsToPlay, lastPlayedCards) <= 0) {
-        alert("必須出比上家更大的牌！");
-        return;
-      }
-    }
-
-    playCards(0, cardsToPlay);
-    lastPlayedCards = cardsToPlay;
-    lastPlayer = 0;
-    passCount = 0;
-    selectedCards.clear();
-    btnPlay.disabled = true;
-    btnPass.disabled = true;
-
-    infoDiv.textContent = `你出了 ${cardsToPlay.map(c => suitNames[c.suit]+rankToString(c.rank)).join(" ")}`;
-    updateAll();
-
-    if(players[0].hand.length === 0){
-      gameStarted = false;
-      showEndDialog("你");
-      return;
-    }
-    currentPlayer = 1;
-    setTimeout(aiTurn, 1400);
-  };
-
-  btnPass.onclick = () => {
-    if(currentPlayer !== 0) return;
-    passCount++;
-    infoDiv.textContent = "你選擇過牌";
-    selectedCards.clear();
-    btnPlay.disabled = true;
-    btnPass.disabled = true;
-    updateAll();
-
-    currentPlayer = 1;
-    setTimeout(aiTurn, 1400);
-  };
-
-  btnHint.onclick = () => {
-    if(currentPlayer !== 0) return;
-    selectedCards.clear();
-    let hintCards = null;
-    if(!lastPlayedCards){
-      let priorities = ["bomb", "truck", "straightPairs", "straight", "tripleWithSingle", "triple", "pair", "single"];
-      outer: for(let t of priorities){
-        for(let len=t==="straight"||t==="straightPairs"||t==="truck"?5:(t==="bomb"?4:(t==="tripleWithSingle"?4:(t==="pair"?2:1))); len<=players[0].hand.length; len++){
-          let combos = getAllCombos(players[0].hand,len).filter(c => getHandType(c) === t);
-          if(combos.length){
-            hintCards = combos[0];
-            break outer;
-          }
-        }
-      }
-    }else{
-      let lastType = getHandType(lastPlayedCards);
-      hintCards = getAllCombos(players[0].hand,lastPlayedCards.length).filter(c => getHandType(c) === lastType && compareHands(c, lastPlayedCards) > 0)[0];
-    }
-    if(hintCards){
-      hintCards.forEach(c => selectedCards.add(c.suit+ c.rank));
-      updateAll();
-      btnPlay.disabled = false;
-      btnPass.disabled = false;
-      infoDiv.textContent = "AI幫你選牌，請出牌或過牌";
-    }else{
-      infoDiv.textContent = "無合法牌，建議過牌";
-    }
-  };
-
-  /* AI回合 */
-  function aiTurn(){
-    infoDiv.textContent = players[currentPlayer].name + " 正在思考…";
-    btnPlay.disabled = true;
-    btnPass.disabled = true;
-    btnHint.disabled = true;
-
-    setTimeout(() => {
-      const cardsToPlay = aiPlayCards(currentPlayer);
-      if(cardsToPlay){
-        playCards(currentPlayer, cardsToPlay);
-        lastPlayedCards = cardsToPlay;
-        lastPlayer = currentPlayer;
-        passCount = 0;
-        infoDiv.textContent = players[currentPlayer].name + " 出了 " + cardsToPlay.map(c => suitNames[c.suit] + rankToString(c.rank)).join(" ");
-      } else {
-        passCount++;
-        infoDiv.textContent = players[currentPlayer].name + " 過牌";
-      }
-      updateAll();
-
-      if(players[currentPlayer].hand.length === 0) {
-        gameStarted = false;
-        showEndDialog(players[currentPlayer].name);
-        return;
-      }
-
-      if(passCount >= 3){
-        lastPlayedCards = null;
-        passCount = 0;
-        infoDiv.textContent += "（牌局重置，請重新出牌）";
-      }
-
-      currentPlayer = (currentPlayer + 1) % players.length;
-
-      if(gameStarted && currentPlayer === 0){
-        btnPlay.disabled = true;
-        btnPass.disabled = false;
-        btnHint.disabled = false;
-        infoDiv.textContent += " 輪到你出牌";
-      } else if(gameStarted){
-        aiTurn();
-      }
-    }, 1500);
-  }
-
-  /* 遊戲結束彈窗 */
-  function showEndDialog(winner){
-    endMessage.textContent = `${winner} 贏了！`;
-    endDialog.classList.add("show");
-  }
-  function hideEndDialog(){
-    endDialog.classList.remove("show");
-  }
-
-  btnReplay.onclick = () => {
-    hideEndDialog();
-    startGame();
-  }
-  btnBack.onclick = () => {
-    hideEndDialog();
-    goStartScreen();
-  }
-
-  /* 取得梅花3玩家先手 */
-  function whoStarts(){
-    for(let i=0; i<players.length; i++){
-      if(players[i].hand.find(c => c.suit==="C" && c.rank===3)) return i;
-    }
-    return 0;
-  }
-
-  /* 開始遊戲 */
-  function startGame(){
-    let deck = createDeck();
-    shuffle(deck);
-    players.forEach(p => p.hand = []);
-    for(let i=0; i<deck.length; i++){
-      players[i%4].hand.push(deck[i]);
-    }
-    players.forEach(p => p.hand = sortCards(p.hand));
-    currentPlayer = whoStarts();
-    lastPlayedCards = null;
-    lastPlayer = null;
-    passCount = 0;
-    gameStarted = true;
-    selectedCards.clear();
-
-    btnPlay.disabled = true;
-    btnPass.disabled = currentPlayer !== 0;
-    btnHint.disabled = currentPlayer !== 0;
-
-    if(currentPlayer === 0){
-      infoDiv.textContent = "遊戲開始，輪到你先出牌（梅花3先手）";
-    } else{
-      infoDiv.textContent = `${players[currentPlayer].name} 先出牌（梅花3先手）`;
-      setTimeout(aiTurn, 1400);
-    }
-
-    updateAll();
-    goGameScreen();
-  }
-
-  /* 顯示/隱藏頁面 */
-  function goStartScreen(){
-    gameScreen.style.display = "none";
-    startScreen.style.display = "flex";
-    infoDiv.textContent = "請按開始";
-  }
-  function goGameScreen(){
-    startScreen.style.display = "none";
-    gameScreen.style.display = "flex";
-  }
-
-  /* 初始化 */
-  goStartScreen();
-
-  startBtn.onclick = () => {
-    startGame();
-  }
-})();
 </script>
-</body>
-</html>
