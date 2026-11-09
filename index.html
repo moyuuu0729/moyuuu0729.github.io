@@ -2,138 +2,149 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8" />
-<title>修正版寫實刮刮樂</title>
-<script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
+<title>寫實拆盲盒遊戲</title>
 <style>
   body {
-    margin:0; background:#121212; font-family:'Noto Sans TC', sans-serif;
-    color:#f5c518; display:flex; flex-direction:column; align-items:center; padding:20px;
-    user-select:none; min-height:100vh;
+    margin: 0; background: #121212; font-family: 'Noto Sans TC', sans-serif;
+    color: #f5c518; display: flex; flex-direction: column; align-items: center;
+    padding: 20px; user-select: none; min-height: 100vh;
   }
   h1 {
-    font-weight:900; font-size:2.5rem; text-shadow: 0 0 8px #f5c518; margin-bottom:20px;
+    font-weight: 900; font-size: 2.5rem; text-shadow: 0 0 8px #f5c518;
+    margin-bottom: 20px;
   }
   #balance {
-    font-size:1.7rem; font-weight:900; margin-bottom:15px;
+    font-size: 1.7rem; font-weight: 900; margin-bottom: 15px;
     background: linear-gradient(135deg, #3b2f0a, #776a17);
-    padding: 12px 36px; border-radius:14px; box-shadow: 0 0 20px #f5c518bb;
+    padding: 12px 36px; border-radius: 14px; box-shadow: 0 0 20px #f5c518bb;
     width: 300px; text-align: center;
   }
   select, button {
-    font-weight:900; font-size:1.3rem; width:300px; border-radius:18px;
-    border:none; cursor:pointer; user-select:none; margin-bottom:14px; padding:14px 0;
-    box-shadow: 0 5px 12px #b08f00; transition: all 0.2s ease;
+    font-weight: 900; font-size: 1.3rem; width: 300px; border-radius: 18px;
+    border: none; cursor: pointer; user-select: none; margin-bottom: 14px;
+    padding: 14px 0; box-shadow: 0 5px 12px #b08f00;
+    transition: all 0.2s ease;
   }
   select {
-    background:#3b2f0a; color:#fff;
+    background: #3b2f0a; color: #fff;
   }
   select:hover {
     box-shadow: 0 7px 15px #b08f00;
   }
-  button#btn-buy {
+  button#btn-open {
     background: linear-gradient(145deg, #d3aa1c, #f6d85c);
-    color:#4b4000;
+    color: #4b4000;
   }
-  button#btn-buy:hover:not(:disabled) {
+  button#btn-open:hover:not(:disabled) {
     background: linear-gradient(145deg, #f6d85c, #d3aa1c);
     box-shadow: 0 6px 18px #b08f00;
     transform: scale(1.05);
   }
-  button#btn-buy:active:not(:disabled) {
+  button#btn-open:active:not(:disabled) {
     transform: scale(0.95);
     box-shadow: 0 3px 7px #b08f00;
   }
-  button#btn-buy:disabled {
-    background: #a1964d66; cursor: not-allowed; box-shadow: none; color: #5a5415; transform: none;
+  button#btn-open:disabled {
+    background: #a1964d66;
+    cursor: not-allowed;
+    box-shadow: none;
+    color: #5a5415;
+    transform: none;
   }
   button#btn-signin {
-    background: #4caf5080; color: #fff; box-shadow: 0 0 10px #4caf50aa;
+    background: #4caf5080;
+    color: #fff;
+    box-shadow: 0 0 10px #4caf50aa;
   }
   button#btn-signin:hover:not(:disabled) {
-    background: #4caf50; box-shadow: 0 0 15px #4caf50cc;
+    background: #4caf50;
+    box-shadow: 0 0 15px #4caf50cc;
   }
   button#btn-signin:disabled {
-    background: #2e7d3200; box-shadow: none; cursor: default;
+    background: #2e7d3200;
+    box-shadow: none;
+    cursor: default;
   }
-  #game-ui {
-    display:none; flex-direction:column; align-items:center;
+  #result-container {
+    margin-top: 20px;
+    background: #ddd2a4;
+    color: #3c2f00;
+    font-weight: 900;
+    font-size: 1.8rem;
+    padding: 20px 40px;
+    border-radius: 24px;
+    box-shadow: 0 0 30px #f5c518ee;
+    min-height: 72px;
+    text-align: center;
+    user-select: none;
+    opacity: 0;
+    transition: opacity 0.7s ease-in-out;
   }
-  #game-container {
-    width:420px; height:320px; border-radius:20px;
-    box-shadow: inset 0 0 40px #f5c518dd;
-    background: linear-gradient(135deg, #eee9dc, #bcb3a1);
-    position:relative; overflow:hidden; user-select:none;
-    margin-top:16px;
+  #result-container.show {
+    opacity: 1;
   }
 </style>
 </head>
 <body>
 
-<h1>寫實刮刮樂</h1>
+<h1>寫實拆盲盒遊戲</h1>
+
+<div id="balance">累積金額：1000 元</div>
 
 <button id="btn-signin">每日簽到 ⏰</button>
-<button id="btn-start">開始遊戲</button>
 
-<div id="game-ui">
-  <div id="balance">累積金額：0 元</div>
+<select id="box-select">
+  <option value="1">經典盲盒（10元）</option>
+  <option value="2">黃金盲盒（30元）</option>
+  <option value="3">鉑金盲盒（50元）</option>
+</select>
 
-  <select id="ticket-select">
-    <option value="1">經典刮刮樂（10元）</option>
-    <option value="2">黃金刮刮樂（30元）</option>
-    <option value="3">鉑金刮刮樂（50元）</option>
-  </select>
+<button id="btn-open">拆開盲盒</button>
 
-  <button id="btn-buy">買一張刮刮樂</button>
+<div id="result-container"></div>
 
-  <div id="game-container"></div>
-</div>
 
 <script>
-  const TICKETS = {
-    1: {
-      price: 10,
-      prizes: [
-        { text: '中獎50元', prob: 0.1, value: 50 },
-        { text: '中獎10元', prob: 0.2, value: 10 },
-        { text: '沒中獎', prob: 0.7, value: 0 }
-      ]
-    },
-    2: {
-      price: 30,
-      prizes: [
-        { text: '中獎200元', prob: 0.05, value: 200 },
-        { text: '中獎50元', prob: 0.25, value: 50 },
-        { text: '沒中獎', prob: 0.7, value: 0 }
-      ]
-    },
-    3: {
-      price: 50,
-      prizes: [
-        { text: '中獎500元', prob: 0.02, value: 500 },
-        { text: '中獎100元', prob: 0.1, value: 100 },
-        { text: '中獎20元', prob: 0.18, value: 20 },
-        { text: '沒中獎', prob: 0.7, value: 0 }
-      ]
-    }
+  const BALANCE_KEY = 'blindbox_balance';
+  const SIGNIN_KEY = 'blindbox_signin_date';
+
+  let balance = parseInt(localStorage.getItem(BALANCE_KEY));
+  if (isNaN(balance)) balance = 1000;
+
+  const baseProbs = {
+    1: [
+      { text: '抽中50元', value: 50, prob: 0.1 },
+      { text: '抽中10元', value: 10, prob: 0.2 },
+      { text: '沒抽中', value: 0, prob: 0.7 }
+    ],
+    2: [
+      { text: '抽中200元', value: 200, prob: 0.05 },
+      { text: '抽中50元', value: 50, prob: 0.25 },
+      { text: '沒抽中', value: 0, prob: 0.7 }
+    ],
+    3: [
+      { text: '抽中500元', value: 500, prob: 0.02 },
+      { text: '抽中100元', value: 100, prob: 0.1 },
+      { text: '抽中20元', value: 20, prob: 0.18 },
+      { text: '沒抽中', value: 0, prob: 0.7 }
+    ]
   };
 
-  const STORAGE_BALANCE = 'scratch_accumulated_balance';
-  const STORAGE_SIGNIN_DATE = 'scratch_signin_date';
-
-  const btnSignin = document.getElementById('btn-signin');
-  const btnStart = document.getElementById('btn-start');
-  const gameUI = document.getElementById('game-ui');
   const balanceEl = document.getElementById('balance');
-  const ticketSelect = document.getElementById('ticket-select');
-  const btnBuy = document.getElementById('btn-buy');
+  const btnSignin = document.getElementById('btn-signin');
+  const boxSelect = document.getElementById('box-select');
+  const btnOpen = document.getElementById('btn-open');
+  const resultContainer = document.getElementById('result-container');
 
-  let balance = Number(localStorage.getItem(STORAGE_BALANCE));
-  if (isNaN(balance)) balance = 1000; // 預設1000元
-  balanceEl.textContent = `累積金額：${balance} 元`;
+  function updateBalanceDisplay() {
+    balanceEl.textContent = `累積金額：${balance} 元`;
+  }
+  updateBalanceDisplay();
 
+  // 簽到按鈕狀態
   function updateSigninBtn() {
-    const today = new Date().toISOString().slice(0, 10);
-    const lastSignin = localStorage.getItem(STORAGE_SIGNIN_DATE);
+    const today = new Date().toISOString().slice(0,10);
+    const lastSignin = localStorage.getItem(SIGNIN_KEY);
     if (lastSignin === today) {
       btnSignin.disabled = true;
       btnSignin.textContent = '今天已簽到 ✅';
@@ -145,131 +156,68 @@
   updateSigninBtn();
 
   btnSignin.addEventListener('click', () => {
-    const today = new Date().toISOString().slice(0, 10);
-    if (localStorage.getItem(STORAGE_SIGNIN_DATE) === today) {
+    const today = new Date().toISOString().slice(0,10);
+    if (localStorage.getItem(SIGNIN_KEY) === today) {
       alert('今天已簽到過囉！明天再來～');
       return;
     }
     balance += 500;
-    localStorage.setItem(STORAGE_BALANCE, balance);
-    localStorage.setItem(STORAGE_SIGNIN_DATE, today);
-    balanceEl.textContent = `累積金額：${balance} 元`;
+    localStorage.setItem(BALANCE_KEY, balance);
+    localStorage.setItem(SIGNIN_KEY, today);
+    updateBalanceDisplay();
     updateSigninBtn();
     alert('簽到成功！獲得500元');
   });
 
-  btnStart.addEventListener('click', () => {
-    btnStart.style.display = 'none';
-    btnSignin.style.display = 'none';
-    gameUI.style.display = 'flex';
-    startGame();
-  });
-
-  let game, currentPrize, prizeText, renderTexture, maskGraphics;
-  let scratchedPixels = 0, scratching = false, scratchedComplete = false;
-  const totalPixels = 420 * 320;
-
-  btnBuy.addEventListener('click', () => {
-    const selected = ticketSelect.value;
-    const ticket = TICKETS[selected];
-    if (balance < ticket.price) {
-      alert(`餘額不足，無法購買此票（${ticket.price}元）`);
-      return;
-    }
-    balance -= ticket.price;
-    localStorage.setItem(STORAGE_BALANCE, balance);
-    balanceEl.textContent = `累積金額：${balance} 元`;
-
-    btnBuy.disabled = true;
-    game.scene.scenes[0].scene.restart();
-  });
-
-  function choosePrize(prizes) {
-    let p = Math.random();
-    let cumProb = 0;
-    for (let pr of prizes) {
-      cumProb += pr.prob;
-      if (p <= cumProb) return pr;
+  function drawPrize(prizes) {
+    let r = Math.random();
+    let c = 0;
+    for (let prize of prizes) {
+      c += prize.prob;
+      if (r <= c) return prize;
     }
     return prizes[prizes.length - 1];
   }
 
-  function startGame() {
-    if (game) {
-      game.destroy(true);
+  btnOpen.addEventListener('click', () => {
+    let selected = boxSelect.value;
+    let price = [10, 30, 50][selected - 1];
+
+    if (balance < price) {
+      alert(`你的金額不足，無法購買此盲盒（需要${price}元）`);
+      return;
     }
-    game = new Phaser.Game({
-      type: Phaser.AUTO,
-      width: 420,
-      height: 320,
-      parent: 'game-container',
-      backgroundColor: 0xbcb3a1,
-      scene: {
-        create
+
+    balance -= price;
+    localStorage.setItem(BALANCE_KEY, balance);
+    updateBalanceDisplay();
+
+    resultContainer.classList.remove('show');
+    resultContainer.textContent = '';
+
+    // 模擬開盒動畫效果（文字閃爍）
+    let count = 0;
+    let timer = setInterval(() => {
+      const dots = '.'.repeat(count % 4);
+      resultContainer.textContent = '拆盒中' + dots;
+      resultContainer.classList.add('show');
+      count++;
+    }, 500);
+
+    setTimeout(() => {
+      clearInterval(timer);
+      const prize = drawPrize(baseProbs[selected]);
+      resultContainer.textContent = prize.value > 0 ? `恭喜你！抽中：${prize.text}` : '很可惜，沒中獎';
+      resultContainer.classList.add('show');
+
+      if (prize.value > 0) {
+        balance += prize.value;
+        localStorage.setItem(BALANCE_KEY, balance);
+        updateBalanceDisplay();
       }
-    });
-  }
-
-  function create() {
-    const scene = this;
-
-    if (prizeText) prizeText.destroy();
-    if (renderTexture) renderTexture.destroy();
-    if (maskGraphics) maskGraphics.destroy();
-
-    const selected = ticketSelect.value;
-    const ticket = TICKETS[selected];
-    currentPrize = choosePrize(ticket.prizes);
-
-    prizeText = scene.add.text(210, 160, currentPrize.text, {
-      fontSize: '56px',
-      fontWeight: '900',
-      color: '#4a3800',
-      stroke: '#fffbaf',
-      strokeThickness: 6,
-      shadow: { offsetX: 3, offsetY: 3, color: '#c6b96f', blur: 5, fill: true }
-    }).setOrigin(0.5);
-
-    renderTexture = scene.make.renderTexture({ width: 420, height: 320, add: true });
-    renderTexture.fill(0x999999, 1);
-    renderTexture.setPosition(0, 0);
-
-    maskGraphics = scene.make.graphics();
-
-    scratchedPixels = 0;
-    scratchedComplete = false;
-    scratching = false;
-
-    scene.input.on('pointerdown', () => { if (!scratchedComplete) scratching = true; });
-    scene.input.on('pointerup', () => { scratching = false; });
-    scene.input.on('pointerout', () => { scratching = false; });
-    scene.input.on('pointermove', pointer => {
-      if (!scratching || scratchedComplete) return;
-      maskGraphics.clear();
-      maskGraphics.fillStyle(0xffffff, 1);
-      maskGraphics.fillCircle(pointer.x, pointer.y, 30);
-      renderTexture.erase(maskGraphics);
-
-      scratchedPixels += Math.PI * 30 * 30;
-      if (scratchedPixels > totalPixels * 0.15) {
-        scratchedComplete = true;
-        btnBuy.disabled = false;
-        onScratchComplete();
-      }
-    });
-  }
-
-  function onScratchComplete() {
-    if (currentPrize.value > 0) {
-      balance += currentPrize.value;
-      localStorage.setItem(STORAGE_BALANCE, balance);
-      balanceEl.textContent = `累積金額：${balance} 元`;
-      alert(`恭喜中獎：${currentPrize.text}！`);
-    } else {
-      alert('很可惜沒中獎，再接再厲！');
-    }
-  }
-
+    }, 3000);
+  });
 </script>
+
 </body>
 </html>
