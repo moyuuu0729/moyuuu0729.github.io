@@ -2,54 +2,36 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8" />
-<title>多票券寫實刮刮樂＋每日簽到</title>
+<title>寫實刮刮樂(開始按鈕/完整刮開判斷)</title>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
 <style>
   body {
-    margin: 0;
-    background: #121212;
+    margin: 0; background: #121212; color: #f5c518;
     font-family: 'Noto Sans TC', sans-serif;
-    color: #f5c518;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px;
-    user-select: none;
-    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; padding: 20px;
+    user-select: none; min-height: 100vh;
   }
   h1 {
-    font-weight: 900;
-    font-size: 2.5rem;
-    text-shadow: 0 0 8px #f5c518;
-    margin-bottom: 20px;
+    font-weight: 900; font-size: 2.5rem; text-shadow: 0 0 8px #f5c518; margin-bottom: 20px;
   }
   #balance {
-    font-size: 1.7rem;
-    font-weight: 900;
+    font-size: 1.7rem; font-weight: 900;
     margin-bottom: 15px;
     background: linear-gradient(135deg, #3b2f0a, #776a17);
     padding: 12px 36px;
     border-radius: 14px;
     box-shadow: 0 0 20px #f5c518bb;
-    width: 300px;
-    text-align: center;
+    width: 300px; text-align: center;
   }
   select, button {
-    font-weight: 900;
-    font-size: 1.3rem;
-    width: 300px;
-    border-radius: 18px;
-    border: none;
-    cursor: pointer;
-    user-select: none;
-    margin-bottom: 14px;
+    font-weight: 900; font-size: 1.3rem; width: 300px; border-radius: 18px;
+    border: none; cursor: pointer; user-select: none; margin-bottom: 14px;
     padding: 14px 0;
     box-shadow: 0 5px 12px #b08f00;
     transition: all 0.2s ease;
   }
   select {
-    background: #3b2f0a;
-    color: #fff;
+    background: #3b2f0a; color: #fff;
   }
   select:hover {
     box-shadow: 0 7px 15px #b08f00;
@@ -68,11 +50,7 @@
     box-shadow: 0 3px 7px #b08f00;
   }
   button#btn-buy:disabled {
-    background: #a1964d66;
-    cursor: not-allowed;
-    box-shadow: none;
-    transform: none;
-    color: #5a5415;
+    background: #a1964d66; cursor: not-allowed; box-shadow: none; color: #5a5415; transform: none;
   }
   button#btn-signin {
     background: #4caf5080;
@@ -88,35 +66,36 @@
     box-shadow: none;
     cursor: default;
   }
+  #game-ui {
+    display: none;
+    flex-direction: column; align-items: center;
+  }
   #game-container {
-    width: 420px;
-    height: 320px;
-    border-radius: 20px;
+    width: 420px; height: 320px; border-radius: 20px;
     box-shadow: inset 0 0 40px #f5c518dd;
     background: linear-gradient(135deg, #eee9dc, #bcb3a1);
-    position: relative;
-    overflow: hidden;
-    user-select: none;
+    position: relative; overflow: hidden; user-select: none;
+    margin-top: 16px;
   }
 </style>
 </head>
 <body>
 
-<h1>多票券寫實刮刮樂＋每日簽到</h1>
+<h1>寫實刮刮樂</h1>
 
-<div id="balance">累積金額：0 元</div>
+<button id="btn-signin" class="btn-signin">每日簽到 ⏰</button>
+<button id="btn-start" class="btn-start">開始遊戲</button>
 
-<button id="btn-signin">每日簽到 ⏰</button>
-
-<select id="ticket-select">
-  <option value="1">經典刮刮樂（10元）</option>
-  <option value="2">黃金刮刮樂（30元）</option>
-  <option value="3">鉑金刮刮樂（50元）</option>
-</select>
-
-<button id="btn-buy">買一張刮刮樂</button>
-
-<div id="game-container"></div>
+<div id="game-ui">
+  <div id="balance">累積金額：0 元</div>
+  <select id="ticket-select">
+    <option value="1">經典刮刮樂（10元）</option>
+    <option value="2">黃金刮刮樂（30元）</option>
+    <option value="3">鉑金刮刮樂（50元）</option>
+  </select>
+  <button id="btn-buy">買一張刮刮樂</button>
+  <div id="game-container"></div>
+</div>
 
 <script>
   const TICKETS = {
@@ -150,16 +129,17 @@
   const STORAGE_BALANCE = 'scratch_accumulated_balance';
   const STORAGE_SIGNIN_DATE = 'scratch_signin_date';
 
-  let balance = parseInt(localStorage.getItem(STORAGE_BALANCE)) || 0;
-
-  const balanceEl = document.getElementById('balance');
   const btnSignin = document.getElementById('btn-signin');
+  const btnStart = document.getElementById('btn-start');
+  const gameUI = document.getElementById('game-ui');
+  const balanceEl = document.getElementById('balance');
   const ticketSelect = document.getElementById('ticket-select');
   const btnBuy = document.getElementById('btn-buy');
 
+  let balance = Number(localStorage.getItem(STORAGE_BALANCE));
+  if (isNaN(balance)) balance = 1000; // 初始1000元
   balanceEl.textContent = `累積金額：${balance} 元`;
 
-  // 更新簽到按鈕狀態
   function updateSigninBtn() {
     const today = new Date().toISOString().slice(0, 10);
     const lastSignin = localStorage.getItem(STORAGE_SIGNIN_DATE);
@@ -175,8 +155,7 @@
 
   btnSignin.addEventListener('click', () => {
     const today = new Date().toISOString().slice(0, 10);
-    const lastSignin = localStorage.getItem(STORAGE_SIGNIN_DATE);
-    if (lastSignin === today) {
+    if (localStorage.getItem(STORAGE_SIGNIN_DATE) === today) {
       alert('今天已簽到過囉！明天再來～');
       return;
     }
@@ -187,6 +166,18 @@
     updateSigninBtn();
     alert('簽到成功！獲得500元');
   });
+
+  btnStart.addEventListener('click', () => {
+    btnStart.style.display = 'none';
+    btnSignin.style.display = 'none';
+    gameUI.style.display = 'flex';
+    // 啟動 Phaser 遊戲
+    startGame();
+  });
+
+  let game, currentPrize, prizeText, renderTexture, maskGraphics;
+  let scratchedPixels = 0, scratching = false, scratchedComplete = false;
+  const totalPixels = 420 * 320;
 
   btnBuy.addEventListener('click', () => {
     const selected = ticketSelect.value;
@@ -200,39 +191,42 @@
     balanceEl.textContent = `累積金額：${balance} 元`;
 
     btnBuy.disabled = true;
-
     game.scene.scenes[0].scene.restart();
   });
 
-  const config = {
-    type: Phaser.AUTO,
-    width: 420,
-    height: 320,
-    parent: 'game-container',
-    backgroundColor: 0xbcb3a1,
-    scene: { create }
-  };
+  function choosePrize(prizes) {
+    let p = Math.random();
+    let cumProb = 0;
+    for (let pr of prizes) {
+      cumProb += pr.prob;
+      if (p <= cumProb) return pr;
+    }
+    return prizes[prizes.length - 1];
+  }
 
-  const game = new Phaser.Game(config);
+  function startGame() {
+    if (game) {
+      game.destroy(true);
+    }
+    game = new Phaser.Game({
+      type: Phaser.AUTO,
+      width: 420,
+      height: 320,
+      parent: 'game-container',
+      backgroundColor: 0xbcb3a1,
+      scene: {
+        create
+      }
+    });
+  }
 
-  let prizeText,
-      renderTexture,
-      maskGraphics,
-      scratchedPixels = 0,
-      scratching = false,
-      scratchedComplete = false,
-      currentPrize;
-
-  const totalPixels = 420 * 320;
-
-  function create(){
+  function create() {
     const scene = this;
 
-    if(prizeText) prizeText.destroy();
-    if(renderTexture) renderTexture.destroy();
-    if(maskGraphics) maskGraphics.destroy();
+    if (prizeText) prizeText.destroy();
+    if (renderTexture) renderTexture.destroy();
+    if (maskGraphics) maskGraphics.destroy();
 
-    // 抽獎品
     const selected = ticketSelect.value;
     const ticket = TICKETS[selected];
     currentPrize = choosePrize(ticket.prizes);
@@ -246,7 +240,6 @@
       shadow: { offsetX: 3, offsetY: 3, color: '#c6b96f', blur: 5, fill: true }
     }).setOrigin(0.5);
 
-    // 灰色遮罩
     renderTexture = scene.make.renderTexture({ width: 420, height: 320, add: true });
     renderTexture.fill(0x999999, 1);
 
@@ -256,37 +249,34 @@
     scratchedComplete = false;
     scratching = false;
 
-    scene.input.on('pointerdown', () => { if(!scratchedComplete) scratching = true;});
-    scene.input.on('pointerup', () => { scratching = false; });
-    scene.input.on('pointerout', () => { scratching = false; });
+    scene.input.on('pointerdown', () => {
+      if (!scratchedComplete)
+        scratching = true;
+    });
+    scene.input.on('pointerup', () => {
+      scratching = false;
+    });
+    scene.input.on('pointerout', () => {
+      scratching = false;
+    });
     scene.input.on('pointermove', pointer => {
-      if(!scratching || scratchedComplete) return;
+      if (!scratching || scratchedComplete) return;
       maskGraphics.clear();
       maskGraphics.fillStyle(0xffffff, 1);
       maskGraphics.fillCircle(pointer.x, pointer.y, 30);
       renderTexture.erase(maskGraphics);
 
-      scratchedPixels += Math.PI*30*30;
-      if(scratchedPixels > totalPixels*0.4){
+      scratchedPixels += Math.PI * 30 * 30;
+      if (scratchedPixels > totalPixels * 0.15) {  // 0.15門檻較低 避免只能刷四分之一
         scratchedComplete = true;
+        btnBuy.disabled = false;
         onScratchComplete();
       }
     });
   }
 
-  function choosePrize(prizes){
-    let p = Math.random();
-    let cumProb = 0;
-    for(let pr of prizes){
-      cumProb += pr.prob;
-      if(p <= cumProb) return pr;
-    }
-    return prizes[prizes.length - 1];
-  }
-
-  function onScratchComplete(){
-    btnBuy.disabled = false;
-    if(currentPrize.value > 0){
+  function onScratchComplete() {
+    if (currentPrize.value > 0) {
       balance += currentPrize.value;
       localStorage.setItem(STORAGE_BALANCE, balance);
       balanceEl.textContent = `累積金額：${balance} 元`;
@@ -295,7 +285,6 @@
       alert('很可惜沒中獎，再接再厲！');
     }
   }
-
 </script>
 </body>
 </html>
