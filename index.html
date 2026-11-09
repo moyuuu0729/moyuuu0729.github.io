@@ -2,43 +2,37 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8" />
-<title>寫實刮刮樂(開始按鈕/完整刮開判斷)</title>
+<title>修正版寫實刮刮樂</title>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.js"></script>
 <style>
   body {
-    margin: 0; background: #121212; color: #f5c518;
-    font-family: 'Noto Sans TC', sans-serif;
-    display: flex; flex-direction: column; align-items: center; padding: 20px;
-    user-select: none; min-height: 100vh;
+    margin:0; background:#121212; font-family:'Noto Sans TC', sans-serif;
+    color:#f5c518; display:flex; flex-direction:column; align-items:center; padding:20px;
+    user-select:none; min-height:100vh;
   }
   h1 {
-    font-weight: 900; font-size: 2.5rem; text-shadow: 0 0 8px #f5c518; margin-bottom: 20px;
+    font-weight:900; font-size:2.5rem; text-shadow: 0 0 8px #f5c518; margin-bottom:20px;
   }
   #balance {
-    font-size: 1.7rem; font-weight: 900;
-    margin-bottom: 15px;
+    font-size:1.7rem; font-weight:900; margin-bottom:15px;
     background: linear-gradient(135deg, #3b2f0a, #776a17);
-    padding: 12px 36px;
-    border-radius: 14px;
-    box-shadow: 0 0 20px #f5c518bb;
+    padding: 12px 36px; border-radius:14px; box-shadow: 0 0 20px #f5c518bb;
     width: 300px; text-align: center;
   }
   select, button {
-    font-weight: 900; font-size: 1.3rem; width: 300px; border-radius: 18px;
-    border: none; cursor: pointer; user-select: none; margin-bottom: 14px;
-    padding: 14px 0;
-    box-shadow: 0 5px 12px #b08f00;
-    transition: all 0.2s ease;
+    font-weight:900; font-size:1.3rem; width:300px; border-radius:18px;
+    border:none; cursor:pointer; user-select:none; margin-bottom:14px; padding:14px 0;
+    box-shadow: 0 5px 12px #b08f00; transition: all 0.2s ease;
   }
   select {
-    background: #3b2f0a; color: #fff;
+    background:#3b2f0a; color:#fff;
   }
   select:hover {
     box-shadow: 0 7px 15px #b08f00;
   }
   button#btn-buy {
     background: linear-gradient(145deg, #d3aa1c, #f6d85c);
-    color: #4b4000;
+    color:#4b4000;
   }
   button#btn-buy:hover:not(:disabled) {
     background: linear-gradient(145deg, #f6d85c, #d3aa1c);
@@ -53,29 +47,23 @@
     background: #a1964d66; cursor: not-allowed; box-shadow: none; color: #5a5415; transform: none;
   }
   button#btn-signin {
-    background: #4caf5080;
-    color: #fff;
-    box-shadow: 0 0 10px #4caf50aa;
+    background: #4caf5080; color: #fff; box-shadow: 0 0 10px #4caf50aa;
   }
   button#btn-signin:hover:not(:disabled) {
-    background: #4caf50;
-    box-shadow: 0 0 15px #4caf50cc;
+    background: #4caf50; box-shadow: 0 0 15px #4caf50cc;
   }
   button#btn-signin:disabled {
-    background: #2e7d3200;
-    box-shadow: none;
-    cursor: default;
+    background: #2e7d3200; box-shadow: none; cursor: default;
   }
   #game-ui {
-    display: none;
-    flex-direction: column; align-items: center;
+    display:none; flex-direction:column; align-items:center;
   }
   #game-container {
-    width: 420px; height: 320px; border-radius: 20px;
+    width:420px; height:320px; border-radius:20px;
     box-shadow: inset 0 0 40px #f5c518dd;
     background: linear-gradient(135deg, #eee9dc, #bcb3a1);
-    position: relative; overflow: hidden; user-select: none;
-    margin-top: 16px;
+    position:relative; overflow:hidden; user-select:none;
+    margin-top:16px;
   }
 </style>
 </head>
@@ -83,17 +71,20 @@
 
 <h1>寫實刮刮樂</h1>
 
-<button id="btn-signin" class="btn-signin">每日簽到 ⏰</button>
-<button id="btn-start" class="btn-start">開始遊戲</button>
+<button id="btn-signin">每日簽到 ⏰</button>
+<button id="btn-start">開始遊戲</button>
 
 <div id="game-ui">
   <div id="balance">累積金額：0 元</div>
+
   <select id="ticket-select">
     <option value="1">經典刮刮樂（10元）</option>
     <option value="2">黃金刮刮樂（30元）</option>
     <option value="3">鉑金刮刮樂（50元）</option>
   </select>
+
   <button id="btn-buy">買一張刮刮樂</button>
+
   <div id="game-container"></div>
 </div>
 
@@ -137,7 +128,7 @@
   const btnBuy = document.getElementById('btn-buy');
 
   let balance = Number(localStorage.getItem(STORAGE_BALANCE));
-  if (isNaN(balance)) balance = 1000; // 初始1000元
+  if (isNaN(balance)) balance = 1000; // 預設1000元
   balanceEl.textContent = `累積金額：${balance} 元`;
 
   function updateSigninBtn() {
@@ -171,7 +162,6 @@
     btnStart.style.display = 'none';
     btnSignin.style.display = 'none';
     gameUI.style.display = 'flex';
-    // 啟動 Phaser 遊戲
     startGame();
   });
 
@@ -242,6 +232,7 @@
 
     renderTexture = scene.make.renderTexture({ width: 420, height: 320, add: true });
     renderTexture.fill(0x999999, 1);
+    renderTexture.setPosition(0, 0);
 
     maskGraphics = scene.make.graphics();
 
@@ -249,16 +240,9 @@
     scratchedComplete = false;
     scratching = false;
 
-    scene.input.on('pointerdown', () => {
-      if (!scratchedComplete)
-        scratching = true;
-    });
-    scene.input.on('pointerup', () => {
-      scratching = false;
-    });
-    scene.input.on('pointerout', () => {
-      scratching = false;
-    });
+    scene.input.on('pointerdown', () => { if (!scratchedComplete) scratching = true; });
+    scene.input.on('pointerup', () => { scratching = false; });
+    scene.input.on('pointerout', () => { scratching = false; });
     scene.input.on('pointermove', pointer => {
       if (!scratching || scratchedComplete) return;
       maskGraphics.clear();
@@ -267,7 +251,7 @@
       renderTexture.erase(maskGraphics);
 
       scratchedPixels += Math.PI * 30 * 30;
-      if (scratchedPixels > totalPixels * 0.15) {  // 0.15門檻較低 避免只能刷四分之一
+      if (scratchedPixels > totalPixels * 0.15) {
         scratchedComplete = true;
         btnBuy.disabled = false;
         onScratchComplete();
@@ -285,6 +269,7 @@
       alert('很可惜沒中獎，再接再厲！');
     }
   }
+
 </script>
 </body>
 </html>
