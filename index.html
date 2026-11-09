@@ -1,31 +1,176 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <title>刮刮樂抽獎遊戲</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>刮刮樂遊戲範例</title>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+  <style>
+    body {
+      margin: 0; 
+      background: #222; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      height: 100vh;
+      font-family: sans-serif;
+      color: white;
+    }
+    #game-container {
+      position: relative;
+    }
+    #balance {
+      margin-top: 10px;
+      text-align: center;
+      font-size: 20px;
+    }
+    #btn-buy {
+      display: block;
+      margin: 15px auto;
+      padding: 8px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
-  <h1>刮刮樂抽獎</h1>
+  <div id="game-container"></div>
+  <div id="balance">累積金額: 0</div>
+  <button id="btn-buy">買一張刮刮樂</button>
 
-  <div id="inputSection">
-    <label>輸入暱稱：</label><br />
-    <input type="text" id="nicknameInput" placeholder="請輸入暱稱" />
-    <br />
-    <button id="startBtn">開始遊戲</button>
-  </div>
+  <script>
+    const config = {
+      type: Phaser.AUTO,
+      width: 400,
+      height: 300,
+      parent: 'game-container',
+      backgroundColor: '#555',
+      scene: {
+        preload,
+        create,
+        update
+      }
+    };
 
-  <div id="gameSection" style="display:none;">
-    <div>玩家：<span id="nicknameDisplay"></span></div>
-    <div id="balance">帳戶餘額：<span id="balanceAmount">0</span> 元</div>
-    <button id="buyCardBtn">購買刮刮樂 (10元)</button>
+    const PRIZES = [
+      { text: '中獎 100 元', value: 100 },
+      { text: '中獎 50 元', value: 50 },
+      { text: '中獎 10 元', value: 10 },
+      { text: '沒中獎', value: 0 },
+      { text: '中獎 500 元', value: 500 },
+      { text: '中獎 200 元', value: 200 },
+      { text: '沒中獎', value: 0 }
+    ];
 
-    <canvas id="scratchCanvas" width="300" height="150" style="display:none;"></canvas>
-    <div id="resultMsg"></div>
+    let game = new Phaser.Game(config);
 
-    <button id="resetBtn" style="display:none;">重新購買</button>
-  </div>
+    let prizeText;
+    let maskGraphics;
+    let revealedPixels = 0;
+    let totalMaskPixels = 400 * 300; // 簡單用畫布面積估算
+    let isScratchComplete = false;
+    let currentPrize = null;
 
-  <script src="script.js"></script>
+    let balance = 0;
+    const balanceDisplay = document.getElementById('balance');
+    const btnBuy = document.getElementById('btn-buy');
+
+    // 從 LocalStorage 讀取累計金額
+    function loadBalance() {
+      const b = localStorage.getItem('scratch_balance');
+      if (b) {
+        balance = parseInt(b);
+        balanceDisplay.textContent = `累積金額: ${balance}`;
+      }
+    }
+
+    // 寫入 LocalStorage
+    function saveBalance() {
+      localStorage.setItem('scratch_balance', balance);
+      balanceDisplay.textContent = `累積金額: ${balance}`;
+    }
+
+    function preload() {
+      // 你可以換成自己真實刮刮樂底圖
+      this.load.image('bg', 'https://i.imgur.com/zfV9xy0.png'); // 獎品背景圖，示意用
+      this.load.image('scratch', 'https://i.imgur.com/eKXXAEc.png'); // 刮刮銀色遮罩，示意用
+    }
+
+    function create() {
+      const scene = this;
+      
+      loadBalance();
+
+      // 清除之前的狀態
+      if (scene.bg) {
+        scene.bg.destroy();
+      }
+      if (scene.scratch) {
+        scene.scratch.destroy();
+      }
+      if (prizeText) {
+        prizeText.destroy();
+      }
+      if (maskGraphics) {
+        maskGraphics.destroy();
+      }
+      revealedPixels = 0;
+      isScratchComplete = false;
+
+      // 隨機選擇獎品
+      currentPrize = Phaser.Utils.Array.GetRandom(PRIZES);
+
+      // 底圖顯示獎品
+      scene.bg = scene.add.image(200, 150, 'bg');
+      prizeText = scene.add.text(200, 150, currentPrize.text, {
+        fontSize: '32px',
+        color: '#fff',
+        stroke: '#000',
+        strokeThickness: 6,
+      }).setOrigin(0.5);
+
+      // 建立刮刮樂遮罩圖層
+      scene.scratch = scene.add.image(200, 150, 'scratch');
+
+      // 用 Graphics 做遮罩（mask）
+      maskGraphics = scene.make.graphics();
+      maskGraphics.fillStyle(0xffffff);
+      maskGraphics.fillRect(0, 0, 400, 300);
+      const mask = maskGraphics.createGeometryMask();
+
+      scene.scratch.setMask(mask);
+
+      // 監聽滑鼠或觸控刮刮事件
+      scene.input.on('pointermove', function (pointer) {
+        if (!pointer.isDown || isScratchComplete) return;
+
+        // 在遮罩上畫透明小圓圈，達成刮開效果
+        maskGraphics.fillCircle(pointer.x, pointer.y, 20);
+
+        // 計算刮開面積（簡易版，對圖層透明度判斷）
+        // Phaser 沒有直接取得遮罩像素API，這裡用計數方式模擬
+        revealedPixels += 1200; // 大約20半徑的圓面積，模擬數字
+        if (revealedPixels > totalMaskPixels * 0.4) {
+          isScratchComplete = true;
+          // 完成刮開，增加玩家金額
+          if (currentPrize.value > 0) {
+            balance += currentPrize.value;
+            saveBalance();
+            alert(`刮開完成！你中了 ${currentPrize.value} 元！`);
+          } else {
+            alert('很可惜，沒中獎喔！');
+          }
+        }
+      });
+    }
+
+    function update() {
+      // 遊戲無需額外持續更新邏輯
+    }
+
+    btnBuy.addEventListener('click', () => {
+      // 重新啟動場景，抽一張新刮刮樂
+      game.scene.scenes[0].scene.restart();
+    });
+  </script>
 </body>
 </html>
