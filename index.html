@@ -2,81 +2,92 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <title>寫實刮刮樂遊戲範例</title>
+  <title>寫實刮刮樂多票券範例</title>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@700&display=swap');
-
     body {
       margin: 0;
-      background: #121212;
-      color: #fff;
+      background: #1b1b1b;
       font-family: 'Noto Sans TC', sans-serif;
+      color: #f5c518;
       display: flex;
       flex-direction: column;
-      justify-content: flex-start;
       align-items: center;
       height: 100vh;
-      padding: 20px;
       user-select: none;
+      padding: 20px;
     }
     h1 {
+      margin-bottom: 10px;
       font-weight: 900;
-      font-size: 2.5rem;
-      margin-bottom: 15px;
-      letter-spacing: 3px;
-      color: #f5c518; /* 金色調 */
-      text-shadow: 0 0 8px #f5c518;
+      font-size: 2.8rem;
+      text-shadow: 0 0 10px #f5c518;
     }
-    #balance-container {
+    #balance {
+      font-size: 1.6rem;
+      padding: 10px 30px;
       background: linear-gradient(135deg, #3b2f0a, #776a17);
       border-radius: 12px;
-      padding: 12px 30px;
-      margin-top: 10px;
-      box-shadow: 0 0 15px #f5c518aa;
-      font-size: 1.5rem;
-      width: 270px;
+      box-shadow: 0 0 20px #f5c518bb;
+      margin-bottom: 20px;
+      width: 280px;
       text-align: center;
-      letter-spacing: 2px;
+      letter-spacing: 3px;
+    }
+    #ticket-select {
+      margin-bottom: 15px;
+    }
+    select {
+      font-size: 1.2rem;
+      padding: 8px 12px;
+      border-radius: 12px;
+      border: none;
+      font-weight: 700;
+      background: #3b2f0a;
+      color: #fff;
+      box-shadow: 0 0 10px #f5c518aa inset;
+      cursor: pointer;
+      width: 220px;
+      user-select: none;
     }
     #btn-buy {
-      margin-top: 25px;
-      cursor: pointer;
+      font-weight: 900;
+      font-size: 1.3rem;
       background: linear-gradient(145deg, #d3aa1c, #f6d85c);
       color: #4b4000;
       border: none;
-      font-weight: 900;
-      font-size: 1.25rem;
-      border-radius: 14px;
-      padding: 12px 28px;
-      box-shadow: 0 4px 6px #b08f00;
-      transition: all 0.15s ease-in-out;
+      border-radius: 16px;
+      padding: 12px 40px;
+      box-shadow: 0 5px 10px #b08f00;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
       user-select: none;
+      margin-bottom: 25px;
+      width: 280px;
+      text-align: center;
     }
     #btn-buy:hover {
       background: linear-gradient(145deg, #f6d85c, #d3aa1c);
-      box-shadow: 0 6px 12px #b08f00;
+      box-shadow: 0 7px 15px #b08f00;
       transform: scale(1.05);
     }
     #btn-buy:active {
       transform: scale(0.95);
-      box-shadow: 0 2px 4px #b08f00;
+      box-shadow: 0 3px 7px #b08f00;
     }
     #game-container {
-      margin-top: 25px;
-      width: 400px;
-      height: 300px;
-      box-shadow:
-        0 0 10px rgba(245,197,24,0.7),
-        inset 0 0 15px rgba(255,255,255,0.12);
+      width: 420px;
+      height: 320px;
       border-radius: 18px;
-      background: linear-gradient(90deg, #eeeeee 20%, #b3af9e 90%);
+      background: linear-gradient(90deg, #eee9dc, #bcb3a1);
+      box-shadow:
+        0 0 20px #f5c518bb,
+        inset 0 0 15px #fff7df;
       position: relative;
       user-select: none;
       overflow: hidden;
     }
-
-    /* 中獎提示框 */
     #win-popup {
       position: absolute;
       left: 50%;
@@ -84,15 +95,17 @@
       transform: translate(-50%, -50%) scale(0);
       background: #f5c518;
       color: #3c2f00;
-      padding: 16px 30px;
       font-weight: 900;
-      font-size: 1.6rem;
-      border-radius: 30px;
-      box-shadow: 0 0 20px #f5c518cc;
+      font-size: 1.8rem;
+      padding: 18px 40px;
+      border-radius: 24px;
+      box-shadow: 0 0 30px #f5c518ee;
       pointer-events: none;
-      user-select: none;
-      z-index: 15;
+      z-index: 20;
+      text-align: center;
       transition: transform 0.3s ease-out;
+      user-select: none;
+      white-space: nowrap;
     }
     #win-popup.show {
       pointer-events: auto;
@@ -100,142 +113,239 @@
       animation: pulseGlow 1.2s infinite alternate;
     }
     @keyframes pulseGlow {
-      from { box-shadow: 0 0 20px #f5c518cc; }
-      to { box-shadow: 0 0 40px #f5c518ff; }
+      0% { box-shadow: 0 0 20px #f5c518cc; }
+      100% { box-shadow: 0 0 40px #f5c518ff; }
     }
   </style>
 </head>
 <body>
   <h1>寫實刮刮樂</h1>
-  <div id="balance-container">累積金額：0 元</div>
+  <div id="balance">累積金額：0 元</div>
+  <div id="ticket-select">
+    <select id="ticket-type">
+      <option value="1">經典刮刮樂（低價 10 元）</option>
+      <option value="2">黃金刮刮樂（中價 30 元）</option>
+      <option value="3">鉑金刮刮樂（高價 50 元）</option>
+    </select>
+  </div>
   <button id="btn-buy">買一張刮刮樂</button>
   <div id="game-container"></div>
   <div id="win-popup"></div>
 
-  <script>
-    // Phaser 遊戲初始化
-    const config = {
-      type: Phaser.AUTO,
-      width: 400,
-      height: 300,
-      parent: 'game-container',
-      backgroundColor: '#b3af9e',
-      scene: {
-        preload,
-        create
-      }
-    };
+<script>
+  // 票券定義：名稱，價格，中獎獎項陣列（文字+機率+獎金）
+  const TICKET_DATA = {
+    1: {
+      name: "經典刮刮樂",
+      price: 10,
+      prizes: [
+        { text: '中獎 50 元', prob: 0.1, value: 50 },
+        { text: '中獎 10 元', prob: 0.2, value: 10 },
+        { text: '沒中獎', prob: 0.7, value: 0 }
+      ]
+    },
+    2: {
+      name: "黃金刮刮樂",
+      price: 30,
+      prizes: [
+        { text: '中獎 200 元', prob: 0.05, value: 200 },
+        { text: '中獎 50 元', prob: 0.25, value: 50 },
+        { text: '沒中獎', prob: 0.7, value: 0 }
+      ]
+    },
+    3: {
+      name: "鉑金刮刮樂",
+      price: 50,
+      prizes: [
+        { text: '中獎 500 元', prob: 0.02, value: 500 },
+        { text: '中獎 100 元', prob: 0.1, value: 100 },
+        { text: '中獎 20 元', prob: 0.18, value: 20 },
+        { text: '沒中獎', prob: 0.7, value: 0 }
+      ]
+    }
+  };
 
-    const PRIZES = [
-      { text: '中獎 100 元', value: 100 },
-      { text: '中獎 50 元', value: 50 },
-      { text: '中獎 10 元', value: 10 },
-      { text: '沒中獎', value: 0 },
-      { text: '中獎 500 元', value: 500 },
-      { text: '中獎 200 元', value: 200 },
-      { text: '沒中獎', value: 0 }
-    ];
+  const config = {
+    type: Phaser.AUTO,
+    width: 420,
+    height: 320,
+    parent: 'game-container',
+    backgroundColor: 0xbcb3a1,
+    scene: { preload, create }
+  };
 
-    let game = new Phaser.Game(config);
-    let maskGraphics;
-    let revealedArea = 0;
-    let totalArea = 400 * 300;
-    let scratchComplete = false;
-    let currentPrize = null;
-    let prizeText;
+  const game = new Phaser.Game(config);
 
-    const balanceContainer = document.getElementById('balance-container');
-    const btnBuy = document.getElementById('btn-buy');
-    const winPopup = document.getElementById('win-popup');
+  let maskGraphics, revealedArea, scratchComplete;
+  let currentPrize, prizeText;
+  const totalArea = 420 * 320;
 
-    // 讀取 LocalStorage 累積金額
-    let balance = parseInt(localStorage.getItem('scratch_balance')) || 0;
-    updateBalanceDisplay();
+  const balanceEl = document.getElementById('balance');
+  const ticketSelect = document.getElementById('ticket-type');
+  const btnBuy = document.getElementById('btn-buy');
+  const winPopup = document.getElementById('win-popup');
 
-    function updateBalanceDisplay() {
-      balanceContainer.textContent = `累積金額：${balance} 元`;
+  // 本地儲存 key
+  const STORAGE_KEY = 'scratch_accumulated_balance';
+
+  // 讀取累積金額
+  let balance = parseInt(localStorage.getItem(STORAGE_KEY)) || 0;
+  updateBalance();
+
+  function updateBalance() {
+    balanceEl.textContent = `累積金額：${balance} 元`;
+  }
+
+  // 隨機取得獎品，依機率抽取
+  function drawPrize(prizes) {
+    let rand = Math.random();
+    let sum = 0;
+    for (const p of prizes) {
+      sum += p.prob;
+      if (rand <= sum) return p;
+    }
+    return prizes[prizes.length -1];
+  }
+
+  // Phaser preload - 這次不用外部圖，改用 Graphics 繪製
+  function preload() {
+    this.load.bitmapFont('arcade', 'https://labs.phaser.io/assets/fonts/bitmap/arcade.png', 'https://labs.phaser.io/assets/fonts/bitmap/arcade.xml');
+  }
+
+  // Phaser create - 用 Graphics 畫刮刮卡和遮罩
+  function create() {
+    const scene = this;
+
+    resetScratchState();
+
+    const ticketType = ticketSelect.value;
+    const ticketInfo = TICKET_DATA[ticketType];
+    currentPrize = drawPrize(ticketInfo.prizes);
+
+    // 繪製刮刮卡背景 — 模擬寫實紋理
+    const bg = scene.add.graphics();
+    // 淺金色底
+    bg.fillStyle(0xf2e7be, 1);
+    bg.fillRoundedRect(10, 10, 400, 300, 24);
+
+    // 裝飾線條  & 斜紋
+    for (let i=0; i<15; i++) {
+      const y = 20 + i*20;
+      bg.lineStyle(1, 0xd0caa0, 0.2);
+      bg.beginPath();
+      bg.moveTo(20, y);
+      bg.lineTo(400, y + 40);
+      bg.strokePath();
+    }
+    // 卡片陰影
+    bg.lineStyle(3, 0xc6b96f, 1);
+    bg.strokeRoundedRect(10, 10, 400, 300, 24);
+
+    // 顯示獎品文字
+    prizeText = scene.add.text(210, 150, currentPrize.text, {
+      font: '48px Arial Black',
+      fill: '#4a3800',
+      stroke: '#fff0a4',
+      strokeThickness: 4,
+      shadow: { offsetX: 2, offsetY: 2, color: '#c6b96f', blur: 4, fill: true }
+    }).setOrigin(0.5);
+
+    // 刮刮層（銀色遮罩，帶質感漸層）
+    let scratch = scene.add.graphics();
+
+    // 漸層模擬銀色材質
+    let grad = scratch.createLinearGradient(10, 10, 410, 310);
+    grad.addColorStop(0, '#bbbabb');
+    grad.addColorStop(0.5, '#dddddc');
+    grad.addColorStop(1, '#999999');
+
+    scratch.fillStyle(0xb0b0b0, 1);
+    scratch.fillRoundedRect(10, 10, 400, 300, 24);
+
+    scratch.lineStyle(2, 0xf0efed);
+    scratch.strokeRoundedRect(10, 10, 400, 300, 24);
+
+    // 閃爍銀色紋理小點裝飾
+    for (let i=0; i<250; i++) {
+      let x = Phaser.Math.Between(15, 400);
+      let y = Phaser.Math.Between(15, 300);
+      scratch.fillStyle(0xdfdfdf, Phaser.Math.FloatBetween(0.15, 0.3));
+      scratch.fillCircle(x, y, Phaser.Math.Between(1,3));
     }
 
-    function preload() {
-      this.load.image('bg', 'https://i.imgur.com/zfV9xy0.png');  // 獎品背景
-      this.load.image('scratch', 'https://i.imgur.com/eKXXAEc.png'); // 銀色刮層
-    }
+    // 遮罩 Graphics
+    maskGraphics = scene.make.graphics();
+    maskGraphics.fillStyle(0xffffff);
+    maskGraphics.fillRoundedRect(10, 10, 400, 300, 24);
+    const mask = maskGraphics.createGeometryMask();
 
-    function create() {
-      const scene = this;
+    scratch.setMask(mask);
 
-      resetScratchState();
+    revealedArea = 0;
+    scratchComplete = false;
 
-      currentPrize = Phaser.Utils.Array.GetRandom(PRIZES);
+    scene.input.on('pointermove', pointer => {
+      if (!pointer.isDown || scratchComplete) return;
 
-      // 底圖展示獎品文字
-      const bg = scene.add.image(200, 150, 'bg');
-      prizeText = scene.add.text(200, 150, currentPrize.text, {
-        fontSize: '36px',
-        fontWeight: '900',
-        color: '#fff',
-        stroke: '#4a3900',
-        strokeThickness: 7,
-        shadow: { offsetX: 2, offsetY: 4, color: '#776600', blur: 3, fill: true }
-      }).setOrigin(0.5);
+      // 擦除遮罩區域，擦掉半徑25小圓形
+      const radius = 25;
+      maskGraphics.fillCircle(pointer.x, pointer.y, radius);
 
-      // 覆蓋刮層
-      const scratch = scene.add.image(200, 150, 'scratch');
+      // 增加刮開面積近似值（圓面積）
+      revealedArea += Math.PI * radius * radius;
 
-      // 遮罩用 Graphics
-      maskGraphics = scene.make.graphics();
-      maskGraphics.fillStyle(0xffffff);
-      maskGraphics.fillRect(0, 0, 400, 300);
-      const mask = maskGraphics.createGeometryMask();
-
-      scratch.setMask(mask);
-
-      scene.input.on('pointermove', pointer => {
-        if (!pointer.isDown || scratchComplete) return;
-
-        // 擦除遮罩圓圈
-        maskGraphics.fillCircle(pointer.x, pointer.y, 20);
-
-        // 累積刮開面積 (大約)
-        revealedArea += Math.PI * 20 * 20;
-
-        if (revealedArea > totalArea * 0.4) {
-          scratchComplete = true;
-          showWinPopup();
-          if (currentPrize.value > 0) {
-            balance += currentPrize.value;
-            localStorage.setItem('scratch_balance', balance);
-            updateBalanceDisplay();
-          }
+      if (!scratchComplete && revealedArea > totalArea * 0.35) {
+        scratchComplete = true;
+        showWinPopup();
+        if (currentPrize.value > 0) {
+          balance += currentPrize.value;
+          localStorage.setItem(STORAGE_KEY, balance);
+          updateBalance();
         }
-      });
-    }
-
-    function resetScratchState() {
-      maskGraphics && maskGraphics.clear();
-      revealedArea = 0;
-      scratchComplete = false;
-      winPopup.classList.remove('show');
-      winPopup.textContent = '';
-    }
-
-    function showWinPopup() {
-      if (currentPrize.value > 0) {
-        winPopup.textContent = `恭喜你中了 ${currentPrize.value} 元！`;
-      } else {
-        winPopup.textContent = '很可惜沒中獎，再接再厲！';
       }
-      winPopup.classList.add('show');
-      // 3秒後自動隱藏提示
-      setTimeout(() => {
-        winPopup.classList.remove('show');
-      }, 3000);
-    }
-
-    btnBuy.addEventListener('click', () => {
-      // 重新啟動 Phaser 場景
-      game.scene.scenes[0].scene.restart();
     });
-  </script>
+  }
+
+  // 預設清除狀態
+  function resetScratchState() {
+    if (maskGraphics) maskGraphics.clear();
+    if (prizeText) prizeText.setText('');
+    winPopup.classList.remove('show');
+    winPopup.textContent = '';
+    revealedArea = 0;
+    scratchComplete = false;
+  }
+
+  // 顯示中獎彈窗
+  function showWinPopup() {
+    if (currentPrize.value > 0) {
+      winPopup.textContent = `恭喜中獎：${currentPrize.text}！`;
+    } else {
+      winPopup.textContent = '很可惜沒中獎，再接再厲！';
+    }
+    winPopup.classList.add('show');
+
+    setTimeout(() => {
+      winPopup.classList.remove('show');
+    }, 3500);
+  }
+
+  // 買票按鈕點擊
+  btnBuy.addEventListener('click', () => {
+    const ticketType = ticketSelect.value;
+    const ticketInfo = TICKET_DATA[ticketType];
+
+    if (balance < ticketInfo.price) {
+      alert(`你的累積金額只有 ${balance} 元，買不起這張票 (${ticketInfo.price} 元)！`);
+      return;
+    }
+    balance -= ticketInfo.price;
+    localStorage.setItem(STORAGE_KEY, balance);
+    updateBalance();
+
+    // 重新啟動 Phaser 場景進行新刮
+    game.scene.scenes[0].scene.restart();
+  });
+</script>
 </body>
 </html>
