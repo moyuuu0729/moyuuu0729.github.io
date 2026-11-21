@@ -1,223 +1,3792 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-<meta charset="UTF-8" />
-<title>寫實拆盲盒遊戲</title>
-<style>
-  body {
-    margin: 0; background: #121212; font-family: 'Noto Sans TC', sans-serif;
-    color: #f5c518; display: flex; flex-direction: column; align-items: center;
-    padding: 20px; user-select: none; min-height: 100vh;
-  }
-  h1 {
-    font-weight: 900; font-size: 2.5rem; text-shadow: 0 0 8px #f5c518;
-    margin-bottom: 20px;
-  }
-  #balance {
-    font-size: 1.7rem; font-weight: 900; margin-bottom: 15px;
-    background: linear-gradient(135deg, #3b2f0a, #776a17);
-    padding: 12px 36px; border-radius: 14px; box-shadow: 0 0 20px #f5c518bb;
-    width: 300px; text-align: center;
-  }
-  select, button {
-    font-weight: 900; font-size: 1.3rem; width: 300px; border-radius: 18px;
-    border: none; cursor: pointer; user-select: none; margin-bottom: 14px;
-    padding: 14px 0; box-shadow: 0 5px 12px #b08f00;
-    transition: all 0.2s ease;
-  }
-  select {
-    background: #3b2f0a; color: #fff;
-  }
-  select:hover {
-    box-shadow: 0 7px 15px #b08f00;
-  }
-  button#btn-open {
-    background: linear-gradient(145deg, #d3aa1c, #f6d85c);
-    color: #4b4000;
-  }
-  button#btn-open:hover:not(:disabled) {
-    background: linear-gradient(145deg, #f6d85c, #d3aa1c);
-    box-shadow: 0 6px 18px #b08f00;
-    transform: scale(1.05);
-  }
-  button#btn-open:active:not(:disabled) {
-    transform: scale(0.95);
-    box-shadow: 0 3px 7px #b08f00;
-  }
-  button#btn-open:disabled {
-    background: #a1964d66;
-    cursor: not-allowed;
-    box-shadow: none;
-    color: #5a5415;
-    transform: none;
-  }
-  button#btn-signin {
-    background: #4caf5080;
-    color: #fff;
-    box-shadow: 0 0 10px #4caf50aa;
-  }
-  button#btn-signin:hover:not(:disabled) {
-    background: #4caf50;
-    box-shadow: 0 0 15px #4caf50cc;
-  }
-  button#btn-signin:disabled {
-    background: #2e7d3200;
-    box-shadow: none;
-    cursor: default;
-  }
-  #result-container {
-    margin-top: 20px;
-    background: #ddd2a4;
-    color: #3c2f00;
-    font-weight: 900;
-    font-size: 1.8rem;
-    padding: 20px 40px;
-    border-radius: 24px;
-    box-shadow: 0 0 30px #f5c518ee;
-    min-height: 72px;
-    text-align: center;
-    user-select: none;
-    opacity: 0;
-    transition: opacity 0.7s ease-in-out;
-  }
-  #result-container.show {
-    opacity: 1;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>聯結車停車大師：台灣貨運模擬</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 繁體中文與儀表板等寬字型 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       全域工業風暗色主題與觸控防誤觸樣式
+       ============================================================ */
+    :root {
+      --bg-slate: #0f172a;
+      --panel-bg: rgba(15, 23, 42, 0.84);
+      --amber: #f59e0b;
+      --emerald: #10b981;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-slate);
+      color: #f8fafc;
+      font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, 'Microsoft JhengHei', sans-serif;
+      touch-action: none;
+    }
+
+    .font-mono-hud {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* 主遊戲畫布滿版自適應 */
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background-color: #1e293b;
+      touch-action: none;
+    }
+
+    /* 工業安全黃黑斜紋飾條 */
+    .hazard-stripe {
+      background: repeating-linear-gradient(
+        -45deg,
+        #f59e0b,
+        #f59e0b 10px,
+        #1e293b 10px,
+        #1e293b 20px
+      );
+    }
+
+    /* 毛玻璃工業儀表板 */
+    .hud-glass {
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+
+    /* 互動方向盤樣式 */
+    .wheel-container {
+      width: clamp(114px, 18vw, 152px);
+      height: clamp(114px, 18vw, 152px);
+      position: relative;
+      touch-action: none;
+    }
+
+    #steeringWheelVisual {
+      width: 100%;
+      height: 100%;
+      transition: filter 0.15s ease;
+      will-change: transform;
+    }
+
+    /* 擬真踏板按鈕 */
+    .pedal-btn {
+      position: relative;
+      overflow: hidden;
+      border: 2px solid rgba(148, 163, 184, 0.35);
+      background: linear-gradient(180deg, #334155 0%, #1e293b 55%, #0f172a 100%);
+      box-shadow: 0 4px 0 #020617, inset 0 1px 1px rgba(255, 255, 255, 0.15);
+      transition: transform 0.06s ease, box-shadow 0.06s ease, border-color 0.12s ease;
+      touch-action: none;
+    }
+
+    .pedal-btn.pressed,
+    .pedal-btn:active {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #020617, inset 0 2px 6px rgba(0, 0, 0, 0.6);
+    }
+
+    .pedal-btn.gas-active {
+      border-color: #10b981;
+      background: linear-gradient(180deg, #065f46 0%, #064e3b 65%, #022c22 100%);
+    }
+
+    .pedal-btn.brake-active {
+      border-color: #ef4444;
+      background: linear-gradient(180deg, #991b1b 0%, #7f1d1d 65%, #450a0a 100%);
+    }
+
+    /* 折甘蔗警告閃爍 */
+    @keyframes dangerPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.72; transform: scale(1.04); }
+    }
+
+    .animate-danger-pulse {
+      animation: dangerPulse 0.45s ease-in-out infinite;
+    }
+
+    /* 捲軸美化（選單與車庫內） */
+    .custom-scroll {
+      touch-action: pan-y;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 99px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(245, 158, 11, 0.45);
+      border-radius: 99px;
+    }
+
+    /* 停車穩定進度圓環 */
+    .hold-ring-progress {
+      transition: stroke-dashoffset 0.08s linear;
+    }
+  </style>
 </head>
 <body>
 
-<h1>寫實拆盲盒遊戲</h1>
+  <!-- ============================================================
+       全螢幕 2.5D 駕駛模擬主畫布
+       ============================================================ -->
+  <canvas id="gameCanvas" aria-label="聯結車停車模擬遊戲畫面"></canvas>
 
-<div id="balance">累積金額：1000 元</div>
+  <!-- 頂部通知 Toast 容器（取代 alert） -->
+  <div id="toastContainer" class="fixed top-16 left-1/2 -translate-x-1/2 z-[90] flex flex-col gap-2 w-[90%] max-w-md pointer-events-none"></div>
 
-<button id="btn-signin">每日簽到 ⏰</button>
+  <!-- ============================================================
+       遊戲中 HUD 介面層 (不遮擋中央行車視野)
+       ============================================================ -->
+  <div id="hudLayer" class="fixed inset-0 pointer-events-none z-20 hidden flex-col justify-between p-2 sm:p-3">
 
-<select id="box-select">
-  <option value="1">經典盲盒（10元）</option>
-  <option value="2">黃金盲盒（30元）</option>
-  <option value="3">鉑金盲盒（50元）</option>
-</select>
+    <!-- 上方儀表條 -->
+    <div class="flex flex-wrap items-start justify-between gap-2">
+      <!-- 左上：選單、關卡標題、計時與車況 -->
+      <div class="pointer-events-auto hud-glass rounded-xl px-2.5 py-2 flex items-center gap-2 sm:gap-3 max-w-full">
+        <button id="btnMenu" type="button" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-amber-400 transition active:scale-95">
+          ☰ 選單
+        </button>
 
-<button id="btn-open">拆開盲盒</button>
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <span id="hudLevelTag" class="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-[10px] font-bold text-amber-300">LV.1</span>
+            <h2 id="hudLevelName" class="text-xs sm:text-sm font-black text-slate-100 truncate">駕訓班直線倒車</h2>
+            <span id="hudWeatherBadge" class="hidden sm:inline-block px-1.5 py-0.5 rounded bg-sky-500/20 text-[10px] text-sky-300 font-bold">☀️ 晴天</span>
+          </div>
+          <div class="flex items-center gap-3 mt-1 text-[11px]">
+            <!-- 計時器 -->
+            <div class="flex items-center gap-1 font-mono-hud text-slate-300">
+              <span>⏱</span>
+              <span id="hudTimer">00:00</span>
+            </div>
+            <!-- 車輛完整度 -->
+            <div class="flex items-center gap-1.5">
+              <span class="text-slate-400">車況</span>
+              <div class="w-16 sm:w-20 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-600">
+                <div id="hudIntegrityBar" class="h-full w-full bg-emerald-500 transition-all duration-150"></div>
+              </div>
+              <span id="hudIntegrityText" class="font-mono-hud font-bold text-emerald-400">100%</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
-<div id="result-container"></div>
+      <!-- 右上：駕駛功能快捷鍵列 -->
+      <div class="pointer-events-auto hud-glass rounded-xl p-1.5 flex items-center gap-1 sm:gap-1.5 flex-wrap">
+        <!-- 簡便 / 擬真排檔切換 -->
+        <button id="btnControlMode" type="button" class="px-2 py-1.5 rounded-lg text-[11px] font-bold border transition active:scale-95 bg-amber-500/20 border-amber-400/50 text-amber-300" title="切換簡便/擬真排檔模式">
+          簡便模式
+        </button>
+        <!-- 倒車輔助線開關 (G) -->
+        <button id="btnAssist" type="button" class="px-2 py-1.5 rounded-lg text-[11px] font-bold border transition active:scale-95 bg-emerald-500/20 border-emerald-400/50 text-emerald-300" title="倒車輔助線 (快捷鍵 G，關閉享 +20% 硬派加分)">
+          輔助線:開
+        </button>
+        <!-- 頭燈開關 (L) -->
+        <button id="btnLights" type="button" class="px-2 py-1.5 rounded-lg text-[11px] font-bold border border-slate-600 bg-slate-800/90 hover:bg-slate-700 text-slate-200 transition active:scale-95" title="車頭燈開關 (快捷鍵 L)">
+          💡
+        </button>
+        <!-- 空拍俯瞰切換 (C) -->
+        <button id="btnCamera" type="button" class="px-2 py-1.5 rounded-lg text-[11px] font-bold border border-slate-600 bg-slate-800/90 hover:bg-slate-700 text-slate-200 transition active:scale-95" title="空拍俯瞰視角 (快捷鍵 C)">
+          🛰️ 空拍
+        </button>
+        <!-- 自由練習場專屬：切換 20/40 呎貨櫃 -->
+        <button id="btnTrailerToggle" type="button" class="hidden px-2 py-1.5 rounded-lg text-[11px] font-bold border border-sky-400/50 bg-sky-500/20 text-sky-200 transition active:scale-95" title="切換標準貨櫃 / 超長40呎貨櫃">
+          📏 30呎
+        </button>
+        <!-- 重來 (R) -->
+        <button id="btnRestart" type="button" class="px-2 py-1.5 rounded-lg text-[11px] font-bold border border-slate-600 bg-slate-800/90 hover:bg-slate-700 text-slate-200 transition active:scale-95" title="重新開始 (快捷鍵 R)">
+          ↺
+        </button>
+        <!-- 音效靜音 -->
+        <button id="btnMute" type="button" class="px-2 py-1.5 rounded-lg text-[11px] font-bold border border-slate-600 bg-slate-800/90 hover:bg-slate-700 text-slate-200 transition active:scale-95" title="開關音效">
+          🔊
+        </button>
+      </div>
+    </div>
 
+    <!-- 中段浮動警示與即時停靠檢核清單 -->
+    <div class="relative flex-1 flex items-start justify-between my-2">
+      <!-- 折甘蔗警告橫幅（中上） -->
+      <div id="jackknifeAlert" class="hidden absolute top-1 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-red-600/95 border-2 border-amber-300 text-white text-xs sm:text-sm font-black shadow-xl animate-danger-pulse whitespace-nowrap">
+        ⚠️ 折甘蔗警告！請回正方向盤或稍微前進！
+      </div>
 
-<script>
-  const BALANCE_KEY = 'blindbox_balance';
-  const SIGNIN_KEY = 'blindbox_signin_date';
+      <!-- 自由練習場提示 -->
+      <div id="freeRoamBanner" class="hidden absolute top-1 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full hud-glass text-[11px] text-amber-200 border border-amber-400/35 whitespace-nowrap">
+        🚛 自由練習場：無時間限制，可任意挑戰三個練習車格與繞錐道
+      </div>
 
-  let balance = parseInt(localStorage.getItem(BALANCE_KEY));
-  if (isNaN(balance)) balance = 1000;
+      <!-- 右側浮動：即時停靠檢核清單 (靠近車格時顯示) -->
+      <div id="dockChecklist" class="hidden ml-auto mt-1 hud-glass rounded-xl p-2.5 sm:p-3 w-48 sm:w-56 border-amber-400/40 transition-all duration-200">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-black text-amber-400 flex items-center gap-1">
+            <span>📋</span> 停靠檢核清單
+          </span>
+          <span id="dockPrecisionBadge" class="font-mono-hud text-[11px] font-bold text-slate-300">0%</span>
+        </div>
+        <ul class="space-y-1.5 text-xs">
+          <li id="chkInBay" class="flex items-center gap-2 text-slate-300">
+            <span class="chk-icon w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center text-[10px]">○</span>
+            <span>貨櫃進入車格</span>
+          </li>
+          <li id="chkAligned" class="flex items-center gap-2 text-slate-300">
+            <span class="chk-icon w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center text-[10px]">○</span>
+            <span>車身角度對正</span>
+          </li>
+          <li id="chkStopped" class="flex items-center gap-2 text-slate-300">
+            <span class="chk-icon w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center text-[10px]">○</span>
+            <span>車速歸零／手煞車</span>
+          </li>
+        </ul>
+        <!-- 停靠穩定鎖定條 -->
+        <div id="dockHoldWrap" class="hidden mt-2 pt-2 border-t border-slate-700/80">
+          <div class="flex items-center justify-between text-[10px] text-emerald-300 font-bold mb-1">
+            <span>確認停妥中...</span>
+            <span>按 Space 立即完成</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div id="dockHoldBar" class="h-full w-0 bg-emerald-400 transition-all duration-75"></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-  const baseProbs = {
-    1: [
-      { text: '抽中50元', value: 50, prob: 0.1 },
-      { text: '抽中10元', value: 10, prob: 0.2 },
-      { text: '沒抽中', value: 0, prob: 0.7 }
-    ],
-    2: [
-      { text: '抽中200元', value: 200, prob: 0.05 },
-      { text: '抽中50元', value: 50, prob: 0.25 },
-      { text: '沒抽中', value: 0, prob: 0.7 }
-    ],
-    3: [
-      { text: '抽中500元', value: 500, prob: 0.02 },
-      { text: '抽中100元', value: 100, prob: 0.1 },
-      { text: '抽中20元', value: 20, prob: 0.18 },
-      { text: '沒抽中', value: 0, prob: 0.7 }
-    ]
-  };
+    <!-- 下方操控區：左側方向盤 / 中央遙測儀表 / 右側踏板與排檔 -->
+    <div class="flex items-end justify-between gap-2">
 
-  const balanceEl = document.getElementById('balance');
-  const btnSignin = document.getElementById('btn-signin');
-  const boxSelect = document.getElementById('box-select');
-  const btnOpen = document.getElementById('btn-open');
-  const resultContainer = document.getElementById('result-container');
+      <!-- 左下：互動方向盤 + 快速左右觸控鈕 -->
+      <div class="pointer-events-auto flex flex-col items-center gap-1.5">
+        <div id="wheelZone" class="wheel-container flex items-center justify-center cursor-grab active:cursor-grabbing">
+          <!-- 內聯 SVG 寫實重車方向盤 -->
+          <svg id="steeringWheelVisual" viewBox="0 0 160 160" class="drop-shadow-[0_6px_14px_rgba(0,0,0,0.65)]">
+            <defs>
+              <linearGradient id="rimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#475569" />
+                <stop offset="50%" stop-color="#1e293b" />
+                <stop offset="100%" stop-color="#0f172a" />
+              </linearGradient>
+            </defs>
+            <!-- 外環 -->
+            <circle cx="80" cy="80" r="68" fill="none" stroke="url(#rimGrad)" stroke-width="15" />
+            <circle cx="80" cy="80" r="68" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" />
+            <!-- 頂部回正黃標 -->
+            <path d="M 73 11 A 68 68 0 0 1 87 11" fill="none" stroke="#f59e0b" stroke-width="14" />
+            <!-- 三輻骨架 -->
+            <path d="M 22 72 L 62 76 L 62 88 L 22 92 Z" fill="#334155" stroke="#0f172a" stroke-width="2" />
+            <path d="M 138 72 L 98 76 L 98 88 L 138 92 Z" fill="#334155" stroke="#0f172a" stroke-width="2" />
+            <path d="M 72 95 L 88 95 L 92 142 L 68 142 Z" fill="#334155" stroke="#0f172a" stroke-width="2" />
+            <!-- 中央喇叭蓋 -->
+            <circle cx="80" cy="80" r="22" fill="#1e293b" stroke="#f59e0b" stroke-width="2.5" />
+            <text x="80" y="84" text-anchor="middle" fill="#f59e0b" font-size="11" font-weight="900" font-family="Noto Sans TC">貨運</text>
+          </svg>
+        </div>
+        <!-- 輔助左右點按按鈕（方便單手或精細微調） -->
+        <div class="flex items-center gap-1.5">
+          <button id="btnSteerLeft" type="button" class="pedal-btn w-12 sm:w-14 h-9 rounded-lg text-sm font-black text-slate-200 flex items-center justify-center" aria-label="向左轉">◀</button>
+          <button id="btnSteerRight" type="button" class="pedal-btn w-12 sm:w-14 h-9 rounded-lg text-sm font-black text-slate-200 flex items-center justify-center" aria-label="向右轉">▶</button>
+        </div>
+      </div>
 
-  function updateBalanceDisplay() {
-    balanceEl.textContent = `累積金額：${balance} 元`;
-  }
-  updateBalanceDisplay();
+      <!-- 下方中央：連結折角儀 + 速度/檔位 + 倒車雷達 -->
+      <div class="pointer-events-auto hud-glass rounded-2xl px-3 py-2 flex items-center gap-3 sm:gap-4 mb-0.5">
+        <!-- 連結折角儀 (Hitch Angle Gauge) -->
+        <div class="flex items-center gap-2">
+          <div class="relative w-12 h-14 sm:w-14 sm:h-16 rounded-lg bg-slate-900/90 border border-slate-700 flex items-center justify-center overflow-hidden">
+            <canvas id="hitchGaugeCanvas" width="56" height="64" class="w-full h-full"></canvas>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold leading-none">連結折角</div>
+            <div id="hudHitchDeg" class="font-mono-hud text-base sm:text-lg font-extrabold text-emerald-400 leading-tight mt-0.5">0°</div>
+            <div id="hudHitchStatus" class="text-[10px] font-bold text-emerald-400/90">正常</div>
+          </div>
+        </div>
 
-  // 簽到按鈕狀態
-  function updateSigninBtn() {
-    const today = new Date().toISOString().slice(0,10);
-    const lastSignin = localStorage.getItem(SIGNIN_KEY);
-    if (lastSignin === today) {
-      btnSignin.disabled = true;
-      btnSignin.textContent = '今天已簽到 ✅';
-    } else {
-      btnSignin.disabled = false;
-      btnSignin.textContent = '每日簽到 ⏰';
-    }
-  }
-  updateSigninBtn();
+        <div class="w-px h-10 bg-slate-700/80 hidden sm:block"></div>
 
-  btnSignin.addEventListener('click', () => {
-    const today = new Date().toISOString().slice(0,10);
-    if (localStorage.getItem(SIGNIN_KEY) === today) {
-      alert('今天已簽到過囉！明天再來～');
-      return;
-    }
-    balance += 500;
-    localStorage.setItem(BALANCE_KEY, balance);
-    localStorage.setItem(SIGNIN_KEY, today);
-    updateBalanceDisplay();
-    updateSigninBtn();
-    alert('簽到成功！獲得500元');
-  });
+        <!-- 時速與檔位顯示 -->
+        <div class="text-center min-w-[56px]">
+          <div class="flex items-center justify-center gap-1">
+            <span id="hudGearBadge" class="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 font-mono-hud text-xs font-black text-emerald-300">D</span>
+            <span id="hudParkBadge" class="hidden px-1.5 py-0.5 rounded bg-red-500/30 border border-red-400 font-mono-hud text-xs font-black text-red-300">P</span>
+          </div>
+          <div class="font-mono-hud text-lg sm:text-xl font-black text-white leading-tight mt-0.5">
+            <span id="hudSpeed">0</span>
+            <span class="text-[10px] font-normal text-slate-400">km/h</span>
+          </div>
+        </div>
 
-  function drawPrize(prizes) {
-    let r = Math.random();
-    let c = 0;
-    for (let prize of prizes) {
-      c += prize.prob;
-      if (r <= c) return prize;
-    }
-    return prizes[prizes.length - 1];
-  }
+        <!-- 倒車雷達條 (Parking Sensor) -->
+        <div id="radarBox" class="hidden sm:flex flex-col items-center pl-2 border-l border-slate-700/80 min-w-[66px]">
+          <div class="text-[10px] text-slate-400 font-bold mb-1">倒車雷達</div>
+          <div class="flex items-end gap-1 h-5">
+            <div class="radar-bar w-2 h-2 rounded-sm bg-slate-700"></div>
+            <div class="radar-bar w-2 h-3 rounded-sm bg-slate-700"></div>
+            <div class="radar-bar w-2 h-4 rounded-sm bg-slate-700"></div>
+            <div class="radar-bar w-2 h-5 rounded-sm bg-slate-700"></div>
+          </div>
+          <div id="hudRadarDist" class="font-mono-hud text-[10px] text-slate-400 mt-0.5">-- m</div>
+        </div>
+      </div>
 
-  btnOpen.addEventListener('click', () => {
-    let selected = boxSelect.value;
-    let price = [10, 30, 50][selected - 1];
+      <!-- 右下：氣壓喇叭、手煞車、擬真排檔桿、煞車/油門踏板 -->
+      <div class="pointer-events-auto flex items-end gap-1.5 sm:gap-2">
+        <!-- 輔助按鈕直排：喇叭 + 手煞車 -->
+        <div class="flex flex-col gap-1.5">
+          <button id="btnHorn" type="button" class="pedal-btn w-12 sm:w-14 h-10 sm:h-11 rounded-xl text-xs font-black text-amber-300 flex flex-col items-center justify-center" title="氣壓喇叭 (H)">
+            <span class="text-sm leading-none">📢</span>
+            <span class="text-[9px] mt-0.5">喇叭</span>
+          </button>
+          <button id="btnHandbrake" type="button" class="pedal-btn w-12 sm:w-14 h-11 sm:h-12 rounded-xl text-xs font-black text-rose-300 flex flex-col items-center justify-center" title="手煞車 (Space)">
+            <span class="font-mono-hud text-sm leading-none">(P)</span>
+            <span class="text-[9px] mt-0.5">手煞車</span>
+          </button>
+        </div>
 
-    if (balance < price) {
-      alert(`你的金額不足，無法購買此盲盒（需要${price}元）`);
-      return;
-    }
+        <!-- 擬真排檔桿 (僅在擬真模式顯示) -->
+        <div id="gearShifterBox" class="hidden hud-glass rounded-xl p-1 flex-col gap-1 border-amber-400/35">
+          <button type="button" data-gear="D" class="gear-btn w-10 h-8 rounded-lg font-mono-hud text-xs font-black transition">D</button>
+          <button type="button" data-gear="N" class="gear-btn w-10 h-8 rounded-lg font-mono-hud text-xs font-black transition">N</button>
+          <button type="button" data-gear="R" class="gear-btn w-10 h-8 rounded-lg font-mono-hud text-xs font-black transition">R</button>
+        </div>
 
-    balance -= price;
-    localStorage.setItem(BALANCE_KEY, balance);
-    updateBalanceDisplay();
+        <!-- 煞車/倒車 踏板 -->
+        <button id="btnBrake" type="button" class="pedal-btn w-14 sm:w-16 h-20 sm:h-24 rounded-xl flex flex-col items-center justify-between py-2.5 text-rose-200">
+          <span class="w-8 h-1 rounded-full bg-rose-400/50"></span>
+          <span id="labelBrake" class="text-xs sm:text-sm font-black tracking-wide">倒車</span>
+          <span class="text-[10px] font-mono-hud text-slate-400">S / ↓</span>
+        </button>
 
-    resultContainer.classList.remove('show');
-    resultContainer.textContent = '';
+        <!-- 油門/前進 踏板 -->
+        <button id="btnGas" type="button" class="pedal-btn w-14 sm:w-16 h-24 sm:h-28 rounded-xl flex flex-col items-center justify-between py-2.5 text-emerald-200">
+          <span class="w-8 h-1 rounded-full bg-emerald-400/50"></span>
+          <span id="labelGas" class="text-xs sm:text-sm font-black tracking-wide">前進</span>
+          <span class="text-[10px] font-mono-hud text-slate-400">W / ↑</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
-    // 模擬開盒動畫效果（文字閃爍）
-    let count = 0;
-    let timer = setInterval(() => {
-      const dots = '.'.repeat(count % 4);
-      resultContainer.textContent = '拆盒中' + dots;
-      resultContainer.classList.add('show');
-      count++;
-    }, 500);
+  <!-- ============================================================
+       主選單 / 關卡選擇畫面 Overlay
+       ============================================================ -->
+  <div id="menuOverlay" class="fixed inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col overflow-hidden">
+    <!-- 頂部安全斜紋 -->
+    <div class="h-2 w-full hazard-stripe shrink-0"></div>
 
-    setTimeout(() => {
-      clearInterval(timer);
-      const prize = drawPrize(baseProbs[selected]);
-      resultContainer.textContent = prize.value > 0 ? `恭喜你！抽中：${prize.text}` : '很可惜，沒中獎';
-      resultContainer.classList.add('show');
+    <!-- 選單標頭 -->
+    <div class="max-w-5xl w-full mx-auto px-4 pt-4 pb-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 flex items-center justify-center text-2xl shadow-lg shadow-amber-500/20 font-black">
+          🚛
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-3xl font-black tracking-wide text-white">
+            聯結車停車大師<span class="text-amber-400">：台灣貨運模擬</span>
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-400 mt-0.5">
+            寫實第五輪拖曳物理・折甘蔗警示・8 大台灣運輸關卡＋自由練習場
+          </p>
+        </div>
+      </div>
 
-      if (prize.value > 0) {
-        balance += prize.value;
-        localStorage.setItem(BALANCE_KEY, balance);
-        updateBalanceDisplay();
+      <!-- 玩家資金、星數與車庫入口 -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <div class="hud-glass rounded-xl px-3 py-2 flex items-center gap-3">
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold">貨運基金</div>
+            <div class="font-mono-hud text-sm sm:text-base font-black text-amber-400">NT$ <span id="menuMoney">0</span></div>
+          </div>
+          <div class="w-px h-7 bg-slate-700"></div>
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold">總星數</div>
+            <div class="font-mono-hud text-sm sm:text-base font-black text-emerald-400">★ <span id="menuStars">0</span>/24</div>
+          </div>
+        </div>
+
+        <button id="btnOpenGarage" type="button" class="px-3.5 py-2.5 rounded-xl bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/25 transition active:scale-95 flex items-center gap-1.5">
+          <span>🎨</span>
+          <span>車庫塗裝</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 關卡卡片網格（可垂直捲動） -->
+    <div class="flex-1 overflow-y-auto custom-scroll px-4 pb-6">
+      <div class="max-w-5xl mx-auto">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 class="text-sm font-black text-amber-300 tracking-wider uppercase flex items-center gap-2">
+            <span>🗺️ 任務關卡選擇</span>
+          </h2>
+          <div class="text-[11px] text-slate-400">
+            鍵盤：<span class="text-slate-200 font-mono-hud">WASD / 方向鍵</span> 駕駛・<span class="text-slate-200 font-mono-hud">Space</span> 手煞車・<span class="text-slate-200 font-mono-hud">Q/E</span> 換檔・<span class="text-slate-200 font-mono-hud">H</span> 氣壓喇叭・<span class="text-slate-200 font-mono-hud">C</span> 空拍
+          </div>
+        </div>
+
+        <div id="levelGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <!-- JS 動態生成 8 關卡 + 1 自由練習場 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       車庫塗裝系統 Modal
+       ============================================================ -->
+  <div id="garageModal" class="fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md">
+    <div class="w-full max-w-3xl hud-glass rounded-2xl border-amber-400/40 overflow-hidden flex flex-col max-h-[88vh]">
+      <div class="px-5 py-4 bg-slate-900/90 border-b border-slate-700 flex items-center justify-between">
+        <div>
+          <h3 class="text-lg font-black text-amber-400 flex items-center gap-2">
+            <span>🎨</span> 車庫塗裝中心
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">解鎖並即時更換曳引車頭與貨櫃專屬塗裝</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="px-3 py-1 rounded-lg bg-slate-800 border border-amber-400/30 font-mono-hud text-sm font-black text-amber-300">
+            NT$ <span id="garageMoney">0</span>
+          </div>
+          <button id="btnCloseGarage" type="button" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold">✕</button>
+        </div>
+      </div>
+
+      <div id="liveryGrid" class="p-4 sm:p-5 overflow-y-auto custom-scroll grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- JS 動態渲染 6 款塗裝 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       第一關快速操作教學彈窗 Overlay
+       ============================================================ -->
+  <div id="tutorialModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+    <div class="w-full max-w-md hud-glass rounded-2xl border-amber-400/50 p-5 shadow-2xl">
+      <div class="flex items-center gap-2.5 mb-3">
+        <span class="text-2xl">🎓</span>
+        <h3 class="text-lg font-black text-amber-400">聯結車倒車必備口訣</h3>
+      </div>
+      <div class="space-y-2.5 text-xs sm:text-sm text-slate-200 leading-relaxed">
+        <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-700">
+          <div class="font-black text-emerald-400 mb-0.5">1. 反打方向盤（推尾原理）</div>
+          倒車時想讓<strong class="text-amber-300">貨櫃尾端往左</strong>，方向盤要<strong class="text-amber-300">往右打</strong>；想讓貨櫃往右，就往左打！
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-700">
+          <div class="font-black text-amber-400 mb-0.5">2. 小幅修正、避免「折甘蔗」</div>
+          留意下方<strong class="text-amber-300">連結折角儀</strong>，角度超過 55° 務必回正方向盤或稍微往前拉直車身。
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-700">
+          <div class="font-black text-sky-400 mb-0.5">3. 善用空拍與輔助線</div>
+          可按 <span class="font-mono-hud px-1 rounded bg-slate-700">C</span> 切換空拍全景；關閉倒車輔助線 (<span class="font-mono-hud px-1 rounded bg-slate-700">G</span>) 過關還能獲得 <strong class="text-emerald-300">+20% 硬派老司機獎金</strong>！
+        </div>
+      </div>
+      <button id="btnCloseTutorial" type="button" class="mt-4 w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm shadow-lg transition active:scale-95">
+        知道了，發動引擎！🚛
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       通關結算星數 Modal
+       ============================================================ -->
+  <div id="resultModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+    <div class="w-full max-w-md hud-glass rounded-2xl border-emerald-400/50 overflow-hidden shadow-2xl">
+      <div class="h-2 w-full hazard-stripe"></div>
+      <div class="p-5 text-center">
+        <div class="text-xs font-bold text-emerald-400 tracking-widest uppercase">MISSION COMPLETE</div>
+        <h3 id="resLevelTitle" class="text-xl font-black text-white mt-1">關卡完成！</h3>
+
+        <!-- 三顆星評分 -->
+        <div id="resStarsRow" class="flex items-center justify-center gap-3 my-4 text-4xl">
+          <span>★</span><span>★</span><span>★</span>
+        </div>
+
+        <!-- 數據細項 -->
+        <div class="grid grid-cols-3 gap-2 text-center bg-slate-900/80 rounded-xl p-3 border border-slate-700/80 mb-3">
+          <div>
+            <div class="text-[10px] text-slate-400">完成時間</div>
+            <div id="resTime" class="font-mono-hud text-sm font-black text-white mt-0.5">00:32</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400">車輛完整度</div>
+            <div id="resIntegrity" class="font-mono-hud text-sm font-black text-emerald-400 mt-0.5">100%</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400">停靠精準度</div>
+            <div id="resPrecision" class="font-mono-hud text-sm font-black text-amber-400 mt-0.5">96%</div>
+          </div>
+        </div>
+
+        <!-- 獎金明細 -->
+        <div class="bg-emerald-950/50 border border-emerald-500/35 rounded-xl px-4 py-2.5 mb-4 text-xs space-y-1">
+          <div class="flex justify-between text-slate-300">
+            <span>任務運費報酬</span>
+            <span id="resBaseReward" class="font-mono-hud font-bold text-white">+NT$ 1,000</span>
+          </div>
+          <div id="resHardcoreRow" class="hidden flex justify-between text-amber-300 font-bold">
+            <span>🔥 硬派老司機加成 (無輔助線 +20%)</span>
+            <span id="resHardcoreBonus" class="font-mono-hud">+NT$ 200</span>
+          </div>
+          <div id="resConeRow" class="hidden flex justify-between text-rose-300">
+            <span>🚧 三角錐賠償扣款</span>
+            <span id="resConePenalty" class="font-mono-hud">-NT$ 50</span>
+          </div>
+          <div class="border-t border-emerald-500/30 pt-1.5 flex justify-between text-sm font-black text-emerald-300">
+            <span>本次實領運費</span>
+            <span id="resTotalReward" class="font-mono-hud">+NT$ 1,200</span>
+          </div>
+        </div>
+
+        <!-- 操作按鈕 -->
+        <div class="grid grid-cols-2 gap-2.5">
+          <button id="btnResultRetry" type="button" class="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-bold text-sm transition active:scale-95">
+            ↺ 重新挑戰
+          </button>
+          <button id="btnResultNext" type="button" class="py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-slate-950 font-black text-sm shadow-lg transition active:scale-95">
+            下一關 ➔
+          </button>
+        </div>
+        <button id="btnResultMenu" type="button" class="mt-2.5 w-full py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-amber-300 transition">
+          返回關卡選單
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       核心模擬引擎與遊戲腳本
+       ============================================================ -->
+  <script>
+    (function () {
+      'use strict';
+
+      /* ==========================================================
+         1. 常數、塗裝資料與儲存管理
+         ========================================================== */
+      const SAVE_KEY = 'tw_truck_parking_save_v1';
+      const PIXELS_PER_METER = 16;
+
+      // 6 款台灣特色與重工車庫塗裝
+      const LIVERIES = [
+        {
+          id: 'evergreen',
+          name: '長榮經典綠',
+          tag: '海運傳奇',
+          price: 0,
+          cabPrimary: '#f8fafc',
+          cabAccent: '#059669',
+          cabRoof: '#e2e8f0',
+          trailerColor: '#047857',
+          trailerStripe: '#ffffff',
+          brand: 'EVERGREEN',
+          brandColor: '#ffffff'
+        },
+        {
+          id: 'yangming',
+          name: '陽明海運黃',
+          tag: '國輪招牌',
+          price: 1500,
+          cabPrimary: '#1e293b',
+          cabAccent: '#f59e0b',
+          cabRoof: '#334155',
+          trailerColor: '#eab308',
+          trailerStripe: '#1e293b',
+          brand: 'YANG MING',
+          brandColor: '#0f172a'
+        },
+        {
+          id: 'taiwan_red',
+          name: '台灣貨運紅白',
+          tag: '省道快遞',
+          price: 2500,
+          cabPrimary: '#dc2626',
+          cabAccent: '#fef2f2',
+          cabRoof: '#b91c1c',
+          trailerColor: '#f1f5f9',
+          trailerStripe: '#dc2626',
+          brand: 'TW EXPRESS',
+          brandColor: '#b91c1c'
+        },
+        {
+          id: 'stealth_gold',
+          name: '消光黑金重工',
+          tag: '特裝旗艦',
+          price: 4000,
+          cabPrimary: '#18181b',
+          cabAccent: '#f59e0b',
+          cabRoof: '#27272a',
+          trailerColor: '#27272a',
+          trailerStripe: '#f59e0b',
+          brand: 'TITAN HEAVY',
+          brandColor: '#fbbf24'
+        },
+        {
+          id: 'glacier_blue',
+          name: '冰川冷鏈藍',
+          tag: '低溫專送',
+          price: 5500,
+          cabPrimary: '#0284c7',
+          cabAccent: '#e0f2fe',
+          cabRoof: '#0369a1',
+          trailerColor: '#e0f2fe',
+          trailerStripe: '#0284c7',
+          brand: 'COLD CHAIN ❄',
+          brandColor: '#0369a1'
+        },
+        {
+          id: 'sakura_pink',
+          name: '櫻花限定粉',
+          tag: '職人特仕',
+          price: 8000,
+          cabPrimary: '#db2777',
+          cabAccent: '#fce7f3',
+          cabRoof: '#be185d',
+          trailerColor: '#fbcfe8',
+          trailerStripe: '#db2777',
+          brand: 'SAKURA LTD 🌸',
+          brandColor: '#9d174d'
+        }
+      ];
+
+      // 玩家存檔資料
+      let saveData = {
+        money: 500,
+        stars: {},          // { levelId: 1..3 }
+        bestTime: {},       // { levelId: seconds }
+        unlockedLiveries: ['evergreen'],
+        selectedLivery: 'evergreen',
+        controlMode: 'auto', // 'auto' | 'sim'
+        assistLines: true,
+        muted: false,
+        tutorialSeen: false
+      };
+
+      function loadSave() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+          if (raw && typeof raw === 'object') {
+            saveData = { ...saveData, ...raw };
+            if (!Array.isArray(saveData.unlockedLiveries) || !saveData.unlockedLiveries.includes('evergreen')) {
+              saveData.unlockedLiveries = ['evergreen'];
+            }
+          }
+        } catch (err) {
+          console.warn('存檔讀取失敗:', err);
+        }
       }
-    }, 3000);
-  });
-</script>
 
+      function persistSave() {
+        try {
+          localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+        } catch (err) {
+          console.warn('存檔寫入失敗:', err);
+        }
+      }
+
+      function getCurrentLivery() {
+        return LIVERIES.find(l => l.id === saveData.selectedLivery) || LIVERIES[0];
+      }
+
+      /* ==========================================================
+         2. 關卡資料設計 (8 大手工關卡 + 1 自由練習場)
+         所有座標、通道寬度與出生點均嚴密驗證 100% 無卡點可通關
+         ========================================================== */
+      // 貨櫃箱外觀色票（靜態場景裝飾用）
+      const CONTAINER_COLORS = ['#0d9488', '#2563eb', '#d97706', '#b91c1c', '#4f46e5', '#475569', '#059669'];
+
+      function createWallBorder(w, h, t = 36) {
+        return [
+          { x: w / 2, y: t / 2, w: w, h: t, angle: 0, type: 'wall' },
+          { x: w / 2, y: h - t / 2, w: w, h: t, angle: 0, type: 'wall' },
+          { x: t / 2, y: h / 2, w: t, h: h, angle: 0, type: 'wall' },
+          { x: w - t / 2, y: h / 2, w: t, h: h, angle: 0, type: 'wall' }
+        ];
+      }
+
+      const LEVELS = [
+        // --------------------------------------------------------
+        // Level 1: 駕訓班直線倒車 (晴天白天)
+        // --------------------------------------------------------
+        {
+          id: 1,
+          code: 'LV.1',
+          name: '駕訓班直線倒車',
+          subtitle: '熟悉聯結車反打方向盤與連結折角控制',
+          weather: 'day',
+          weatherLabel: '☀️ 晴天白天',
+          difficulty: '新手入門',
+          longTrailer: false,
+          worldW: 1650,
+          worldH: 980,
+          threeStarTime: 30,
+          twoStarTime: 55,
+          baseReward: 800,
+          spawn: { x: 1050, y: 490, angle: 0 },
+          bays: [
+            { x: 430, y: 490, w: 224, h: 74, angle: 0, label: '第 1 號練習格', bumperSide: 'rear' }
+          ],
+          obstacles: [
+            ...createWallBorder(1650, 980),
+            // 駕訓班行政屋（上方）
+            { x: 825, y: 120, w: 540, h: 110, angle: 0, type: 'building', label: '台灣大型車駕訓中心' },
+            // 車道上下安全島
+            { x: 430, y: 310, w: 300, h: 28, angle: 0, type: 'barrier' },
+            { x: 430, y: 670, w: 300, h: 28, angle: 0, type: 'barrier' },
+            // 後方卸貨月台牆（貼著車格後方）
+            { x: 265, y: 490, w: 96, h: 260, angle: 0, type: 'dock', label: '考驗月台' },
+            // 旁邊停放的教練貨櫃
+            { x: 1320, y: 200, w: 190, h: 48, angle: 0, type: 'container', color: '#2563eb', brand: 'TRAINING' },
+            { x: 1320, y: 780, w: 190, h: 48, angle: 0, type: 'container', color: '#d97706', brand: 'TRAINING' }
+          ],
+          cones: [
+            { x: 640, y: 415 }, { x: 740, y: 415 }, { x: 840, y: 415 },
+            { x: 640, y: 565 }, { x: 740, y: 565 }, { x: 840, y: 565 }
+          ],
+          markings: [
+            { type: 'dashedLine', x1: 560, y1: 490, x2: 1280, y2: 490 }
+          ]
+        },
+
+        // --------------------------------------------------------
+        // Level 2: 物流中心 90° 倒車入庫 (晴天白天)
+        // --------------------------------------------------------
+        {
+          id: 2,
+          code: 'LV.2',
+          name: '物流中心 90° 倒車入庫',
+          subtitle: '經典駕駛側 90 度入庫，停進兩台貨櫃車之間',
+          weather: 'day',
+          weatherLabel: '☀️ 晴天白天',
+          difficulty: '基礎實戰',
+          longTrailer: false,
+          worldW: 1760,
+          worldH: 1220,
+          threeStarTime: 48,
+          twoStarTime: 85,
+          baseReward: 1100,
+          spawn: { x: 520, y: 730, angle: 0 },
+          bays: [
+            { x: 860, y: 335, w: 224, h: 74, angle: Math.PI / 2, label: 'B2 卸貨碼頭', bumperSide: 'rear' }
+          ],
+          obstacles: [
+            ...createWallBorder(1760, 1220),
+            // 北側大型物流倉庫月台
+            { x: 880, y: 130, w: 1380, h: 160, angle: 0, type: 'dock', label: '桃園國際物流集散中心' },
+            // 停在目標車格左側的半拖車（留出充裕進庫空間）
+            { x: 685, y: 335, w: 205, h: 48, angle: Math.PI / 2, type: 'parkedTruck', color: '#2563eb' },
+            { x: 515, y: 335, w: 205, h: 48, angle: Math.PI / 2, type: 'parkedTruck', color: '#b91c1c' },
+            // 停在目標車格右側的半拖車
+            { x: 1035, y: 335, w: 205, h: 48, angle: Math.PI / 2, type: 'parkedTruck', color: '#d97706' },
+            { x: 1205, y: 335, w: 205, h: 48, angle: Math.PI / 2, type: 'parkedTruck', color: '#0d9488' },
+            // 南側場區分隔島
+            { x: 880, y: 1090, w: 720, h: 36, angle: 0, type: 'barrier' }
+          ],
+          cones: [
+            { x: 785, y: 448 }, { x: 935, y: 448 },
+            { x: 350, y: 580 }, { x: 1420, y: 580 }
+          ],
+          markings: [
+            { type: 'dashedLine', x1: 160, y1: 730, x2: 1600, y2: 730 }
+          ]
+        },
+
+        // --------------------------------------------------------
+        // Level 3: 轉運站盲側挑戰 (黃昏夕陽)
+        // --------------------------------------------------------
+        {
+          id: 3,
+          code: 'LV.3',
+          name: '轉運站盲側挑戰',
+          subtitle: '夕陽西下！繞過轉運站建物並完成副駕盲側倒車',
+          weather: 'sunset',
+          weatherLabel: '🌇 黃昏夕陽',
+          difficulty: '進階技巧',
+          longTrailer: false,
+          worldW: 1820,
+          worldH: 1260,
+          threeStarTime: 58,
+          twoStarTime: 95,
+          baseReward: 1400,
+          spawn: { x: 1240, y: 840, angle: Math.PI },
+          bays: [
+            { x: 1120, y: 345, w: 224, h: 74, angle: Math.PI / 2, label: '盲側 3 號口', bumperSide: 'rear' }
+          ],
+          obstacles: [
+            ...createWallBorder(1820, 1260),
+            // 左上方轉運站主建築
+            { x: 430, y: 310, w: 620, h: 360, angle: 0, type: 'building', label: '中區貨運轉運站' },
+            // 右上方月台
+            { x: 1260, y: 130, w: 900, h: 165, angle: 0, type: 'dock', label: '東側卸貨平台' },
+            // 目標車格兩側停放貨櫃
+            { x: 945, y: 345, w: 200, h: 48, angle: Math.PI / 2, type: 'container', color: '#4f46e5', brand: 'TRANSIT' },
+            { x: 1295, y: 345, w: 200, h: 48, angle: Math.PI / 2, type: 'parkedTruck', color: '#059669' },
+            { x: 1480, y: 345, w: 200, h: 48, angle: Math.PI / 2, type: 'container', color: '#475569', brand: 'CARGO' },
+            // 中央安全島（迫使車頭大轉彎繞行或精準盲側切入）
+            { x: 640, y: 1030, w: 460, h: 40, angle: 0, type: 'barrier' }
+          ],
+          cones: [
+            { x: 775, y: 480 }, { x: 1045, y: 460 }, { x: 1195, y: 460 },
+            { x: 420, y: 740 }, { x: 420, y: 860 }
+          ],
+          markings: [
+            { type: 'dashedLine', x1: 200, y1: 840, x2: 1620, y2: 840 }
+          ]
+        },
+
+        // --------------------------------------------------------
+        // Level 4: 高雄港貨櫃碼頭 (港區白天)
+        // --------------------------------------------------------
+        {
+          id: 4,
+          code: 'LV.4',
+          name: '高雄港貨櫃碼頭',
+          subtitle: '穿梭於彩色貨櫃堆疊區，精準倒車對準橋式起重機',
+          weather: 'port',
+          weatherLabel: '⚓ 港區晴天',
+          difficulty: '中級挑戰',
+          longTrailer: false,
+          worldW: 1960,
+          worldH: 1320,
+          threeStarTime: 65,
+          twoStarTime: 105,
+          baseReward: 1700,
+          spawn: { x: 430, y: 1020, angle: 0 },
+          bays: [
+            { x: 1520, y: 310, w: 228, h: 76, angle: Math.PI, label: '79 號碼頭吊櫃區', bumperSide: 'rear' }
+          ],
+          obstacles: [
+            ...createWallBorder(1960, 1320),
+            // 右上港區橋式機台基座
+            { x: 1765, y: 310, w: 200, h: 300, angle: 0, type: 'dock', label: '橋式起重機 #07' },
+            // 下方貨櫃堆疊區（左側）
+            { x: 560, y: 690, w: 220, h: 52, angle: 0, type: 'container', color: '#0d9488', brand: 'EVERGREEN' },
+            { x: 560, y: 750, w: 220, h: 52, angle: 0, type: 'container', color: '#2563eb', brand: 'MAERSK' },
+            { x: 810, y: 690, w: 220, h: 52, angle: 0, type: 'container', color: '#d97706', brand: 'YANG MING' },
+            { x: 810, y: 750, w: 220, h: 52, angle: 0, type: 'container', color: '#b91c1c', brand: 'WAN HAI' },
+            // 上方貨櫃堆疊區
+            { x: 520, y: 290, w: 220, h: 52, angle: 0, type: 'container', color: '#4f46e5', brand: 'ONE' },
+            { x: 520, y: 350, w: 220, h: 52, angle: 0, type: 'container', color: '#059669', brand: 'EVERGREEN' },
+            // 吊櫃區下方防護貨櫃
+            { x: 1510, y: 520, w: 230, h: 52, angle: 0, type: 'container', color: '#475569', brand: 'PORT OPS' },
+            { x: 1510, y: 860, w: 230, h: 52, angle: 0, type: 'container', color: '#d97706', brand: 'YANG MING' },
+            { x: 1510, y: 920, w: 230, h: 52, angle: 0, type: 'container', color: '#2563eb', brand: 'COSCO' }
+          ],
+          cones: [
+            { x: 1380, y: 245 }, { x: 1380, y: 375 },
+            { x: 1020, y: 690 }, { x: 1020, y: 750 },
+            { x: 1180, y: 1050 }
+          ],
+          markings: [
+            { type: 'dashedLine', x1: 160, y1: 1020, x2: 1200, y2: 1020 },
+            { type: 'dashedLine', x1: 1180, y1: 310, x2: 1180, y2: 1020 }
+          ]
+        },
+
+        // --------------------------------------------------------
+        // Level 5: 市區窄巷送貨 (傍晚)
+        // --------------------------------------------------------
+        {
+          id: 5,
+          code: 'LV.5',
+          name: '市區窄巷送貨',
+          subtitle: '善用內輪差大外切，穿過 L 型街道倒進商場後門',
+          weather: 'dusk',
+          weatherLabel: '🌆 傍晚街燈',
+          difficulty: '高難度',
+          longTrailer: false,
+          worldW: 1860,
+          worldH: 1340,
+          threeStarTime: 72,
+          twoStarTime: 115,
+          baseReward: 2100,
+          spawn: { x: 420, y: 1030, angle: 0 },
+          bays: [
+            { x: 1410, y: 315, w: 224, h: 74, angle: Math.PI, label: '量販店進貨口', bumperSide: 'rear' }
+          ],
+          obstacles: [
+            ...createWallBorder(1860, 1340),
+            // 左上大型社區建物（形成 L 型轉角）
+            { x: 420, y: 420, w: 660, h: 660, angle: 0, type: 'building', label: '信義商辦大樓' },
+            // 右下商業建築
+            { x: 1520, y: 980, w: 500, h: 520, angle: 0, type: 'building', label: '捷運聯合開發館' },
+            // 進貨口後方牆面
+            { x: 1665, y: 315, w: 210, h: 280, angle: 0, type: 'dock', label: '量販倉儲月台' },
+            // 路邊臨停貨車（增加狹窄感但保有大轉彎餘裕）
+            { x: 640, y: 1230, w: 120, h: 42, angle: 0, type: 'van', color: '#f8fafc' },
+            { x: 820, y: 1230, w: 120, h: 42, angle: 0, type: 'van', color: '#38bdf8' },
+            { x: 820, y: 240, w: 46, h: 115, angle: 0, type: 'van', color: '#fbbf24' }
+          ],
+          cones: [
+            { x: 790, y: 780 }, { x: 830, y: 740 },
+            { x: 1250, y: 700 }, { x: 1250, y: 640 },
+            { x: 1280, y: 250 }, { x: 1280, y: 380 }
+          ],
+          markings: [
+            { type: 'dashedLine', x1: 120, y1: 1030, x2: 1040, y2: 1030 },
+            { type: 'dashedLine', x1: 1040, y1: 315, x2: 1040, y2: 1030 }
+          ]
+        },
+
+        // --------------------------------------------------------
+        // Level 6: 冷鏈倉儲 S 型雙彎 (夜間照明)
+        // --------------------------------------------------------
+        {
+          id: 6,
+          code: 'LV.6',
+          name: '冷鏈倉儲 S 型雙彎',
+          subtitle: '深夜值勤！開啟頭燈穿越 S 型障礙進入低溫卸貨口',
+          weather: 'night',
+          weatherLabel: '🌙 夜間照明',
+          difficulty: '進階夜駕',
+          longTrailer: false,
+          worldW: 1960,
+          worldH: 1300,
+          threeStarTime: 78,
+          twoStarTime: 125,
+          baseReward: 2500,
+          spawn: { x: 380, y: 960, angle: 0 },
+          bays: [
+            { x: 1550, y: 340, w: 224, h: 74, angle: Math.PI, label: '零下 18°C 急凍門', bumperSide: 'rear' }
+          ],
+          obstacles: [
+            ...createWallBorder(1960, 1300),
+            // 右側冷鏈月台
+            { x: 1790, y: 340, w: 190, h: 340, angle: 0, type: 'dock', label: '極地冷鏈物流中心' },
+            // 第一道 S 彎阻隔（上方伸出）
+            { x: 640, y: 350, w: 140, h: 520, angle: 0, type: 'building', label: '冷凍機房 A' },
+            // 第二道 S 彎阻隔（下方伸出）
+            { x: 1180, y: 940, w: 150, h: 540, angle: 0, type: 'building', label: '冷凍機房 B' },
+            // 冷藏貨櫃點綴
+            { x: 1560, y: 600, w: 210, h: 48, angle: 0, type: 'container', color: '#e0f2fe', brand: 'REEFER -18C' },
+            { x: 280, y: 300, w: 210, h: 48, angle: 0, type: 'container', color: '#0284c7', brand: 'COLD LOGISTICS' }
+          ],
+          cones: [
+            { x: 640, y: 650 }, { x: 750, y: 650 },
+            { x: 1080, y: 630 }, { x: 1180, y: 630 },
+            { x: 1415, y: 275 }, { x: 1415, y: 405 }
+          ],
+          markings: [
+            { type: 'dashedLine', x1: 160, y1: 960, x2: 910, y2: 960 },
+            { type: 'dashedLine', x1: 910, y1: 340, x2: 910, y2: 960 },
+            { type: 'dashedLine', x1: 910, y1: 340, x2: 1400, y2: 340 }
+          ]
+        },
+
+        // --------------------------------------------------------
+        // Level 7: 颱風夜暴雨運補 (夜間暴雨)
+        // --------------------------------------------------------
+        {
+          id: 7,
+          code: 'LV.7',
+          name: '颱風夜暴雨運補',
+          subtitle: '視線極差＋濕滑路面！將救災物資準確倒進防颱補給站',
+          weather: 'typhoon',
+          weatherLabel: '⛈️ 颱風暴雨',
+          difficulty: '極限天候',
+          longTrailer: false,
+          worldW: 1920,
+          worldH: 1320,
+          threeStarTime: 82,
+          twoStarTime: 135,
+          baseReward: 3200,
+          spawn: { x: 420, y: 940, angle: 0 },
+          bays: [
+            { x: 1040, y: 340, w: 224, h: 74, angle: Math.PI / 2, label: '防颱緊急補給口', bumperSide: 'rear' }
+          ],
+          obstacles: [
+            ...createWallBorder(1920, 1320),
+            // 北側防災物資倉儲
+            { x: 960, y: 125, w: 1500, h: 165, angle: 0, type: 'dock', label: '南部防災物資儲備站' },
+            // 補給口兩側車輛與障礙物
+            { x: 865, y: 340, w: 205, h: 48, angle: Math.PI / 2, type: 'parkedTruck', color: '#dc2626' },
+            { x: 1215, y: 340, w: 205, h: 48, angle: Math.PI / 2, type: 'parkedTruck', color: '#0284c7' },
+            { x: 640, y: 340, w: 205, h: 48, angle: Math.PI / 2, type: 'container', color: '#475569', brand: 'RESCUE' },
+            { x: 1450, y: 340, w: 205, h: 48, angle: Math.PI / 2, type: 'container', color: '#d97706', brand: 'RELIEF' },
+            // 場中施工紐澤西護欄
+            { x: 650, y: 690, w: 260, h: 34, angle: 0, type: 'barrier' },
+            { x: 1390, y: 740, w: 260, h: 34, angle: 0, type: 'barrier' }
+          ],
+          cones: [
+            { x: 965, y: 460 }, { x: 1115, y: 460 },
+            { x: 500, y: 690 }, { x: 800, y: 690 },
+            { x: 1240, y: 740 }, { x: 1540, y: 740 }
+          ],
+          markings: [
+            { type: 'dashedLine', x1: 180, y1: 940, x2: 1740, y2: 940 }
+          ]
+        },
+
+        // --------------------------------------------------------
+        // Level 8: 老司機終極平行停車 (夕陽 / 超長 40 呎貨櫃)
+        // --------------------------------------------------------
+        {
+          id: 8,
+          code: 'LV.8',
+          name: '老司機終極平行停車',
+          subtitle: '駕馭超長 40 呎貨櫃！在兩台大型聯結車之間完美路邊平行停車',
+          weather: 'sunset',
+          weatherLabel: '🌇 夕陽・40呎長櫃',
+          difficulty: '大師終極',
+          longTrailer: true,
+          worldW: 2040,
+          worldH: 1160,
+          threeStarTime: 85,
+          twoStarTime: 145,
+          baseReward: 4500,
+          spawn: { x: 1220, y: 540, angle: 0 },
+          bays: [
+            { x: 960, y: 295, w: 278, h: 74, angle: 0, label: '40 呎長櫃路邊車格', bumperSide: 'none' }
+          ],
+          obstacles: [
+            ...createWallBorder(2040, 1160),
+            // 國道休息站建築群
+            { x: 1020, y: 120, w: 1680, h: 145, angle: 0, type: 'building', label: '西螺國道服務區・大型車專用道' },
+            // 後方停放的大型聯結車（留有約 590px 的真實路邊進位空間）
+            { x: 460, y: 295, w: 260, h: 48, angle: 0, type: 'parkedTruck', color: '#059669' },
+            // 前方停放的大型聯結車
+            { x: 1570, y: 295, w: 260, h: 48, angle: 0, type: 'parkedTruck', color: '#2563eb' },
+            // 對向分隔島
+            { x: 1020, y: 940, w: 1400, h: 42, angle: 0, type: 'barrier' }
+          ],
+          cones: [
+            { x: 640, y: 345 }, { x: 1380, y: 345 },
+            { x: 640, y: 740 }, { x: 1020, y: 740 }, { x: 1400, y: 740 }
+          ],
+          markings: [
+            { type: 'dashedLine', x1: 160, y1: 540, x2: 1880, y2: 540 }
+          ]
+        },
+
+        // --------------------------------------------------------
+        // Bonus Mode: 自由練習場 (無計時・三種車格＋繞錐道)
+        // --------------------------------------------------------
+        {
+          id: 0,
+          code: 'FREE',
+          name: '自由練習場',
+          subtitle: '無計時大場地！包含直線、90°、路邊平行三種車格與繞錐練習道',
+          weather: 'day',
+          weatherLabel: '☀️ 開放場地',
+          difficulty: '自由練習',
+          isFreeRoam: true,
+          longTrailer: false,
+          worldW: 2240,
+          worldH: 1520,
+          threeStarTime: 999,
+          twoStarTime: 999,
+          baseReward: 0,
+          spawn: { x: 960, y: 780, angle: 0 },
+          bays: [
+            { x: 380, y: 780, w: 246, h: 76, angle: 0, label: '直線練習格', bumperSide: 'rear' },
+            { x: 1120, y: 320, w: 246, h: 76, angle: Math.PI / 2, label: '90° 入庫格', bumperSide: 'rear' },
+            { x: 1760, y: 310, w: 280, h: 76, angle: 0, label: '路邊平行格', bumperSide: 'none' }
+          ],
+          obstacles: [
+            ...createWallBorder(2240, 1520),
+            { x: 1120, y: 120, w: 460, h: 120, angle: 0, type: 'dock', label: '90° 練習月台' },
+            { x: 195, y: 780, w: 96, h: 240, angle: 0, type: 'dock', label: '直線月台' },
+            // 90度練習格旁的參考貨櫃
+            { x: 940, y: 320, w: 205, h: 48, angle: Math.PI / 2, type: 'container', color: '#2563eb', brand: 'PRACTICE' },
+            { x: 1300, y: 320, w: 205, h: 48, angle: Math.PI / 2, type: 'container', color: '#d97706', brand: 'PRACTICE' }
+          ],
+          cones: [
+            // 下方繞錐 S 型練習道
+            { x: 640, y: 1180 }, { x: 860, y: 1260 }, { x: 1080, y: 1180 },
+            { x: 1300, y: 1260 }, { x: 1520, y: 1180 }, { x: 1740, y: 1260 }
+          ],
+          markings: [
+            { type: 'dashedLine', x1: 520, y1: 780, x2: 1950, y2: 780 }
+          ]
+        }
+      ];
+
+      /* ==========================================================
+         3. 幾何數學與 SAT (OBB) 碰撞系統
+         ========================================================== */
+      function normalizeAngle(a) {
+        while (a > Math.PI) a -= Math.PI * 2;
+        while (a < -Math.PI) a += Math.PI * 2;
+        return a;
+      }
+
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
+      function getOBBCorners(cx, cy, w, h, angle) {
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        const hw = w * 0.5;
+        const hh = h * 0.5;
+        return [
+          { x: cx + hw * c - hh * s, y: cy + hw * s + hh * c },
+          { x: cx - hw * c - hh * s, y: cy - hw * s + hh * c },
+          { x: cx - hw * c + hh * s, y: cy - hw * s - hh * c },
+          { x: cx + hw * c + hh * s, y: cy + hw * s - hh * c }
+        ];
+      }
+
+      // 分離軸定理 (SAT)：回傳將 OBB A 推出 OBB B 所需的最小平移向量 (MTV)
+      function testOBBCollision(a, b) {
+        // 快速圓形預檢（大幅降低計算量）
+        const ra = Math.hypot(a.w * 0.5, a.h * 0.5);
+        const rb = Math.hypot(b.w * 0.5, b.h * 0.5);
+        const dxCenter = a.x - b.x;
+        const dyCenter = a.y - b.y;
+        if (dxCenter * dxCenter + dyCenter * dyCenter > (ra + rb) * (ra + rb)) {
+          return null;
+        }
+
+        const cornersA = getOBBCorners(a.x, a.y, a.w, a.h, a.angle);
+        const cornersB = getOBBCorners(b.x, b.y, b.w, b.h, b.angle);
+
+        const axes = [
+          { x: Math.cos(a.angle), y: Math.sin(a.angle) },
+          { x: -Math.sin(a.angle), y: Math.cos(a.angle) },
+          { x: Math.cos(b.angle), y: Math.sin(b.angle) },
+          { x: -Math.sin(b.angle), y: Math.cos(b.angle) }
+        ];
+
+        let minOverlap = Infinity;
+        let smallestAxis = null;
+
+        for (let i = 0; i < 4; i++) {
+          const ax = axes[i].x;
+          const ay = axes[i].y;
+
+          let minA = Infinity, maxA = -Infinity;
+          for (let j = 0; j < 4; j++) {
+            const p = cornersA[j].x * ax + cornersA[j].y * ay;
+            if (p < minA) minA = p;
+            if (p > maxA) maxA = p;
+          }
+
+          let minB = Infinity, maxB = -Infinity;
+          for (let j = 0; j < 4; j++) {
+            const p = cornersB[j].x * ax + cornersB[j].y * ay;
+            if (p < minB) minB = p;
+            if (p > maxB) maxB = p;
+          }
+
+          const overlap = Math.min(maxA, maxB) - Math.max(minA, minB);
+          if (overlap <= 0) {
+            return null; // 存在分離軸，無碰撞
+          }
+
+          if (overlap < minOverlap) {
+            minOverlap = overlap;
+            smallestAxis = { x: ax, y: ay };
+          }
+        }
+
+        // 確保 MTV 指向從 B 推開 A 的方向
+        const dot = dxCenter * smallestAxis.x + dyCenter * smallestAxis.y;
+        if (dot < 0) {
+          smallestAxis.x = -smallestAxis.x;
+          smallestAxis.y = -smallestAxis.y;
+        }
+
+        return {
+          nx: smallestAxis.x,
+          ny: smallestAxis.y,
+          depth: minOverlap
+        };
+      }
+
+      // OBB 與圓形（三角錐）碰撞檢測
+      function testOBBCircle(obb, cx, cy, r) {
+        const dx = cx - obb.x;
+        const dy = cy - obb.y;
+        const c = Math.cos(-obb.angle);
+        const s = Math.sin(-obb.angle);
+        const localX = dx * c - dy * s;
+        const localY = dx * s + dy * c;
+
+        const hw = obb.w * 0.5;
+        const hh = obb.h * 0.5;
+        const clampedX = clamp(localX, -hw, hw);
+        const clampedY = clamp(localY, -hh, hh);
+
+        const diffX = localX - clampedX;
+        const diffY = localY - clampedY;
+        const distSq = diffX * diffX + diffY * diffY;
+        if (distSq >= r * r) return null;
+
+        const dist = Math.sqrt(distSq) || 0.001;
+        const lnx = diffX / dist;
+        const lny = diffY / dist;
+        const cw = Math.cos(obb.angle);
+        const sw = Math.sin(obb.angle);
+        return {
+          nx: lnx * cw - lny * sw,
+          ny: lnx * sw + lny * cw,
+          depth: r - dist
+        };
+      }
+
+      /* ==========================================================
+         4. 純 Web Audio API 合成重車音效引擎（零外部音檔）
+         ========================================================== */
+      const SoundFX = {
+        ctx: null,
+        engineOsc1: null,
+        engineOsc2: null,
+        engineFilter: null,
+        engineGain: null,
+        chugLfo: null,
+        hornNodes: null,
+        reverseBeepTimer: 0,
+        radarBeepTimer: 0,
+        noiseBuffer: null,
+
+        init() {
+          if (this.ctx) {
+            if (this.ctx.state === 'suspended') {
+              this.ctx.resume().catch(() => {});
+            }
+            return;
+          }
+          try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            this.ctx = new AudioCtx();
+
+            // 預建白噪音緩衝（氣壓煞車洩氣聲）
+            const len = this.ctx.sampleRate * 1.0;
+            this.noiseBuffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+            const data = this.noiseBuffer.getChannelData(0);
+            for (let i = 0; i < len; i++) {
+              data[i] = Math.random() * 2 - 1;
+            }
+
+            // 柴油重車引擎低沉怠速合成器
+            const osc1 = this.ctx.createOscillator();
+            const osc2 = this.ctx.createOscillator();
+            osc1.type = 'sawtooth';
+            osc2.type = 'triangle';
+            osc1.frequency.value = 38;
+            osc2.frequency.value = 76;
+
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 135;
+            filter.Q.value = 2.2;
+
+            // 柴油活塞脈動 LFO
+            const lfo = this.ctx.createOscillator();
+            const lfoGain = this.ctx.createGain();
+            lfo.frequency.value = 14;
+            lfoGain.gain.value = 0.014;
+
+            const masterGain = this.ctx.createGain();
+            masterGain.gain.value = 0.0;
+
+            osc1.connect(filter);
+            osc2.connect(filter);
+            filter.connect(masterGain);
+            lfo.connect(lfoGain);
+            lfoGain.connect(masterGain.gain);
+            masterGain.connect(this.ctx.destination);
+
+            osc1.start();
+            osc2.start();
+            lfo.start();
+
+            this.engineOsc1 = osc1;
+            this.engineOsc2 = osc2;
+            this.engineFilter = filter;
+            this.engineGain = masterGain;
+            this.chugLfo = lfo;
+          } catch (err) {
+            console.warn('音效引擎初始化失敗:', err);
+          }
+        },
+
+        // 即時更新引擎轉速音高、倒車蜂鳴、倒車雷達
+        update(dt, active, speedRatio, throttleActive, isReversing, radarDist) {
+          if (!this.ctx || !this.engineGain) return;
+          const now = this.ctx.currentTime;
+
+          if (!active || saveData.muted) {
+            this.engineGain.gain.setTargetAtTime(0, now, 0.08);
+            this.stopHorn();
+            return;
+          }
+
+          // 引擎聲響動態調變
+          const rpm = clamp(speedRatio * 0.85 + (throttleActive ? 0.32 : 0), 0, 1.2);
+          const baseFreq = 36 + rpm * 42;
+          this.engineOsc1.frequency.setTargetAtTime(baseFreq, now, 0.06);
+          this.engineOsc2.frequency.setTargetAtTime(baseFreq * 1.98, now, 0.06);
+          this.engineFilter.frequency.setTargetAtTime(125 + rpm * 190, now, 0.07);
+          this.chugLfo.frequency.setTargetAtTime(13 + rpm * 16, now, 0.07);
+          this.engineGain.gain.setTargetAtTime(0.05 + rpm * 0.045, now, 0.08);
+
+          // 卡車倒車提示音「嗶—嗶—」
+          if (isReversing) {
+            this.reverseBeepTimer -= dt;
+            if (this.reverseBeepTimer <= 0) {
+              this.playTone(1160, 0.16, 'square', 0.045);
+              this.reverseBeepTimer = 0.68;
+            }
+          } else {
+            this.reverseBeepTimer = 0.12;
+          }
+
+          // 倒車雷達距離警示音
+          if (isReversing && radarDist < 140) {
+            this.radarBeepTimer -= dt;
+            const interval = radarDist < 36 ? 0.11 : radarDist < 75 ? 0.24 : 0.44;
+            if (this.radarBeepTimer <= 0) {
+              this.playTone(radarDist < 36 ? 2150 : 1780, 0.06, 'sine', 0.065);
+              this.radarBeepTimer = interval;
+            }
+          } else {
+            this.radarBeepTimer = 0.08;
+          }
+        },
+
+        playTone(freq, duration, type = 'sine', volume = 0.1) {
+          if (saveData.muted || !this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(volume, now + 0.012);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + duration + 0.02);
+        },
+
+        // 氣壓煞車洩氣聲 (Pssshh!)
+        playAirBrake() {
+          if (saveData.muted) return;
+          this.init();
+          if (!this.ctx || !this.noiseBuffer) return;
+          const now = this.ctx.currentTime;
+          const src = this.ctx.createBufferSource();
+          src.buffer = this.noiseBuffer;
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(3200, now);
+          filter.frequency.exponentialRampToValueAtTime(1400, now + 0.28);
+          filter.Q.value = 1.6;
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.14, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          src.start(now);
+          src.stop(now + 0.32);
+        },
+
+        // 雙音重卡氣壓喇叭 (按住持續發聲)
+        startHorn() {
+          if (saveData.muted) return;
+          this.init();
+          if (!this.ctx || this.hornNodes) return;
+          const now = this.ctx.currentTime;
+
+          const freqs = [185, 233.08, 277.18]; // 雄渾三和弦氣壓喇叭
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.value = 1250;
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.14, now + 0.045);
+
+          const oscs = freqs.map(f => {
+            const o = this.ctx.createOscillator();
+            o.type = 'sawtooth';
+            o.frequency.value = f;
+            o.connect(filter);
+            o.start(now);
+            return o;
+          });
+
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          this.hornNodes = { oscs, gain };
+        },
+
+        stopHorn() {
+          if (!this.hornNodes || !this.ctx) return;
+          const now = this.ctx.currentTime;
+          const { oscs, gain } = this.hornNodes;
+          this.hornNodes = null;
+          gain.gain.cancelScheduledValues(now);
+          gain.gain.setTargetAtTime(0.0001, now, 0.04);
+          setTimeout(() => {
+            oscs.forEach(o => {
+              try { o.stop(); } catch (_) {}
+            });
+          }, 180);
+        },
+
+        // 碰撞低頻悶響
+        playCrash(intensity = 0.5) {
+          if (saveData.muted) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(115, now);
+          osc.frequency.exponentialRampToValueAtTime(36, now + 0.22);
+          gain.gain.setValueAtTime(clamp(intensity * 0.25, 0.06, 0.28), now);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.26);
+        },
+
+        // 撞飛三角錐清脆波波聲
+        playConePop() {
+          if (saveData.muted) return;
+          this.init();
+          this.playTone(340, 0.08, 'triangle', 0.11);
+          setTimeout(() => this.playTone(520, 0.07, 'sine', 0.08), 35);
+        },
+
+        // 過關勝利慶祝號角
+        playVictory() {
+          if (saveData.muted) return;
+          this.init();
+          const melody = [523.25, 659.25, 783.99, 1046.5];
+          melody.forEach((f, idx) => {
+            setTimeout(() => {
+              this.playTone(f, idx === 3 ? 0.45 : 0.18, 'triangle', 0.13);
+            }, idx * 105);
+          });
+        }
+      };
+
+      /* ==========================================================
+         5. DOM 元件快取與通用通知
+         ========================================================== */
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const hitchCanvas = document.getElementById('hitchGaugeCanvas');
+      const hitchCtx = hitchCanvas.getContext('2d');
+
+      const dom = {
+        hudLayer: document.getElementById('hudLayer'),
+        menuOverlay: document.getElementById('menuOverlay'),
+        garageModal: document.getElementById('garageModal'),
+        tutorialModal: document.getElementById('tutorialModal'),
+        resultModal: document.getElementById('resultModal'),
+        toastContainer: document.getElementById('toastContainer'),
+
+        menuMoney: document.getElementById('menuMoney'),
+        menuStars: document.getElementById('menuStars'),
+        garageMoney: document.getElementById('garageMoney'),
+        levelGrid: document.getElementById('levelGrid'),
+        liveryGrid: document.getElementById('liveryGrid'),
+
+        hudLevelTag: document.getElementById('hudLevelTag'),
+        hudLevelName: document.getElementById('hudLevelName'),
+        hudWeatherBadge: document.getElementById('hudWeatherBadge'),
+        hudTimer: document.getElementById('hudTimer'),
+        hudIntegrityBar: document.getElementById('hudIntegrityBar'),
+        hudIntegrityText: document.getElementById('hudIntegrityText'),
+
+        btnMenu: document.getElementById('btnMenu'),
+        btnControlMode: document.getElementById('btnControlMode'),
+        btnAssist: document.getElementById('btnAssist'),
+        btnLights: document.getElementById('btnLights'),
+        btnCamera: document.getElementById('btnCamera'),
+        btnTrailerToggle: document.getElementById('btnTrailerToggle'),
+        btnRestart: document.getElementById('btnRestart'),
+        btnMute: document.getElementById('btnMute'),
+
+        jackknifeAlert: document.getElementById('jackknifeAlert'),
+        freeRoamBanner: document.getElementById('freeRoamBanner'),
+        dockChecklist: document.getElementById('dockChecklist'),
+        dockPrecisionBadge: document.getElementById('dockPrecisionBadge'),
+        chkInBay: document.getElementById('chkInBay'),
+        chkAligned: document.getElementById('chkAligned'),
+        chkStopped: document.getElementById('chkStopped'),
+        dockHoldWrap: document.getElementById('dockHoldWrap'),
+        dockHoldBar: document.getElementById('dockHoldBar'),
+
+        wheelZone: document.getElementById('wheelZone'),
+        steeringWheelVisual: document.getElementById('steeringWheelVisual'),
+        btnSteerLeft: document.getElementById('btnSteerLeft'),
+        btnSteerRight: document.getElementById('btnSteerRight'),
+
+        hudHitchDeg: document.getElementById('hudHitchDeg'),
+        hudHitchStatus: document.getElementById('hudHitchStatus'),
+        hudGearBadge: document.getElementById('hudGearBadge'),
+        hudParkBadge: document.getElementById('hudParkBadge'),
+        hudSpeed: document.getElementById('hudSpeed'),
+        radarBox: document.getElementById('radarBox'),
+        hudRadarDist: document.getElementById('hudRadarDist'),
+        radarBars: document.querySelectorAll('.radar-bar'),
+
+        btnHorn: document.getElementById('btnHorn'),
+        btnHandbrake: document.getElementById('btnHandbrake'),
+        gearShifterBox: document.getElementById('gearShifterBox'),
+        gearBtns: document.querySelectorAll('.gear-btn'),
+        btnBrake: document.getElementById('btnBrake'),
+        btnGas: document.getElementById('btnGas'),
+        labelBrake: document.getElementById('labelBrake'),
+        labelGas: document.getElementById('labelGas'),
+
+        resLevelTitle: document.getElementById('resLevelTitle'),
+        resStarsRow: document.getElementById('resStarsRow'),
+        resTime: document.getElementById('resTime'),
+        resIntegrity: document.getElementById('resIntegrity'),
+        resPrecision: document.getElementById('resPrecision'),
+        resBaseReward: document.getElementById('resBaseReward'),
+        resHardcoreRow: document.getElementById('resHardcoreRow'),
+        resHardcoreBonus: document.getElementById('resHardcoreBonus'),
+        resConeRow: document.getElementById('resConeRow'),
+        resConePenalty: document.getElementById('resConePenalty'),
+        resTotalReward: document.getElementById('resTotalReward'),
+        btnResultRetry: document.getElementById('btnResultRetry'),
+        btnResultNext: document.getElementById('btnResultNext'),
+        btnResultMenu: document.getElementById('btnResultMenu')
+      };
+
+      function showToast(msg, type = 'info') {
+        const el = document.createElement('div');
+        const styles = {
+          info: 'bg-slate-900/95 border-amber-400/70 text-amber-100',
+          success: 'bg-emerald-950/95 border-emerald-400 text-emerald-100',
+          warn: 'bg-rose-950/95 border-rose-400 text-rose-100'
+        };
+        el.className = `px-4 py-2 rounded-xl border text-xs sm:text-sm font-bold text-center shadow-xl transition-all duration-300 opacity-0 -translate-y-2 ${styles[type] || styles.info}`;
+        el.textContent = msg;
+        dom.toastContainer.appendChild(el);
+        requestAnimationFrame(() => el.classList.remove('opacity-0', '-translate-y-2'));
+        setTimeout(() => {
+          el.classList.add('opacity-0', '-translate-y-2');
+          setTimeout(() => el.remove(), 300);
+        }, 2400);
+      }
+
+      /* ==========================================================
+         6. 遊戲核心狀態與物理參數
+         ========================================================== */
+      const TRUCK_CFG = {
+        cabWheelbase: 64,
+        cabLength: 98,
+        cabWidth: 44,
+        cabCenterOffset: 28,    // 相對於後軸(第五輪)的中心前移量
+        trailerWidth: 46,
+        trailerFrontOverhang: 14,
+        trailerRearOverhang: 34,
+        maxSteer: 0.66,         // ~37.8°
+        maxJackknife: 80 * Math.PI / 180,
+        warnJackknife: 55 * Math.PI / 180,
+        dangerJackknife: 72 * Math.PI / 180,
+        maxForwardSpeed: 215,
+        maxReverseSpeed: -112,
+        accelForward: 170,
+        accelReverse: 125,
+        brakeDecel: 340,
+        drag: 55
+      };
+
+      const game = {
+        screen: 'menu', // 'menu' | 'playing' | 'result'
+        level: LEVELS[0],
+        elapsed: 0,
+        integrity: 100,
+        hitCooldown: 0,
+        conesKnocked: 0,
+        freeRoamLong: false,
+        freeRoamCompletedBays: new Set(),
+
+        // 車輛物理狀態
+        truck: {
+          x: 0,
+          y: 0,
+          angle: 0,
+          trlAngle: 0,
+          trlWheelbase: 148,
+          v: 0,
+          steer: 0,
+          gear: 'D',        // 擬真模式使用：'R' | 'N' | 'D'
+          handbrake: false,
+          headlights: false,
+          brakeLight: false,
+          reverseLight: false,
+          turnSignal: 0     // -1 左, 0 無, 1 右
+        },
+
+        // 動態物件與視覺粒子
+        cones: [],
+        skidMarks: [],
+        smokeParticles: [],
+        rainDrops: [],
+        lightningAlpha: 0,
+        lightningTimer: 5,
+
+        // 停靠檢核狀態
+        dock: {
+          activeBay: null,
+          inBay: false,
+          aligned: false,
+          stopped: false,
+          precision: 0,
+          holdTimer: 0
+        },
+
+        // 攝影機狀態
+        cam: {
+          x: 0,
+          y: 0,
+          zoom: 1,
+          overview: false,
+          shake: 0
+        },
+
+        // 輸入狀態
+        input: {
+          up: false,
+          down: false,
+          left: false,
+          right: false,
+          wheelDragging: false,
+          wheelTargetSteer: 0,
+          horn: false
+        },
+
+        radarDist: 999
+      };
+
+      // 程式化柏油路面紋理（預繪於離屏 Canvas 提升效能）
+      let asphaltPattern = null;
+      function buildAsphaltPattern() {
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = 160;
+        pCanvas.height = 160;
+        const pCtx = pCanvas.getContext('2d');
+        pCtx.fillStyle = '#27313f';
+        pCtx.fillRect(0, 0, 160, 160);
+        for (let i = 0; i < 650; i++) {
+          const x = Math.random() * 160;
+          const y = Math.random() * 160;
+          const shade = Math.random() > 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.09)';
+          pCtx.fillStyle = shade;
+          pCtx.fillRect(x, y, 2, 2);
+        }
+        asphaltPattern = ctx.createPattern(pCanvas, 'repeat');
+      }
+
+      /* ==========================================================
+         7. 取得曳引車頭與貨櫃的精確 OBB 與座標
+         ========================================================== */
+      function getTrailerLength(wb) {
+        return TRUCK_CFG.trailerFrontOverhang + wb + TRUCK_CFG.trailerRearOverhang;
+      }
+
+      function getTractorOBB(t = game.truck) {
+        return {
+          x: t.x + Math.cos(t.angle) * TRUCK_CFG.cabCenterOffset,
+          y: t.y + Math.sin(t.angle) * TRUCK_CFG.cabCenterOffset,
+          w: TRUCK_CFG.cabLength,
+          h: TRUCK_CFG.cabWidth,
+          angle: t.angle
+        };
+      }
+
+      function getTrailerOBB(t = game.truck) {
+        const len = getTrailerLength(t.trlWheelbase);
+        // 貨櫃前端在第五輪前方 trailerFrontOverhang，後端在 -(trlWheelbase + trailerRearOverhang)
+        const centerOffset = TRUCK_CFG.trailerFrontOverhang - len * 0.5;
+        return {
+          x: t.x + Math.cos(t.trlAngle) * centerOffset,
+          y: t.y + Math.sin(t.trlAngle) * centerOffset,
+          w: len,
+          h: TRUCK_CFG.trailerWidth,
+          angle: t.trlAngle
+        };
+      }
+
+      /* ==========================================================
+         8. 關卡載入與重置
+         ========================================================== */
+      function startLevel(levelId) {
+        const lvl = LEVELS.find(l => l.id === levelId) || LEVELS[0];
+        game.level = lvl;
+        game.screen = 'playing';
+        game.elapsed = 0;
+        game.integrity = 100;
+        game.hitCooldown = 0;
+        game.conesKnocked = 0;
+        game.freeRoamCompletedBays.clear();
+
+        const useLong = lvl.isFreeRoam ? game.freeRoamLong : !!lvl.longTrailer;
+        const t = game.truck;
+        t.x = lvl.spawn.x;
+        t.y = lvl.spawn.y;
+        t.angle = lvl.spawn.angle;
+        t.trlAngle = lvl.spawn.angle;
+        t.trlWheelbase = useLong ? 198 : 148;
+        t.v = 0;
+        t.steer = 0;
+        t.gear = 'D';
+        t.handbrake = false;
+        t.headlights = (lvl.weather === 'night' || lvl.weather === 'typhoon' || lvl.weather === 'dusk');
+        t.brakeLight = false;
+        t.reverseLight = false;
+
+        // 複製可撞飛三角錐狀態
+        game.cones = (lvl.cones || []).map(c => ({
+          x: c.x,
+          y: c.y,
+          vx: 0,
+          vy: 0,
+          rot: 0,
+          vrot: 0,
+          tipped: false
+        }));
+
+        game.skidMarks = [];
+        game.smokeParticles = [];
+        game.dock = { activeBay: null, inBay: false, aligned: false, stopped: false, precision: 0, holdTimer: 0 };
+        game.cam.overview = false;
+        game.cam.shake = 0;
+        game.cam.x = t.x;
+        game.cam.y = t.y;
+        game.cam.zoom = getDefaultFollowZoom();
+
+        // 颱風暴雨初始化雨滴
+        game.rainDrops = [];
+        if (lvl.weather === 'typhoon') {
+          for (let i = 0; i < 160; i++) {
+            game.rainDrops.push({
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight,
+              len: 14 + Math.random() * 18,
+              speed: 620 + Math.random() * 280
+            });
+          }
+        }
+
+        // 更新介面顯示
+        dom.menuOverlay.classList.add('hidden');
+        dom.resultModal.classList.add('hidden');
+        dom.resultModal.classList.remove('flex');
+        dom.hudLayer.classList.remove('hidden');
+        dom.hudLayer.classList.add('flex');
+
+        dom.hudLevelTag.textContent = lvl.code;
+        dom.hudLevelName.textContent = lvl.name;
+        dom.hudWeatherBadge.textContent = lvl.weatherLabel;
+        dom.freeRoamBanner.classList.toggle('hidden', !lvl.isFreeRoam);
+        dom.btnTrailerToggle.classList.toggle('hidden', !lvl.isFreeRoam);
+        dom.btnTrailerToggle.textContent = useLong ? '📏 40呎長櫃' : '📏 30呎標準';
+
+        syncControlModeUI();
+        syncAssistUI();
+        syncLightsUI();
+        syncMuteUI();
+        syncCameraUI();
+        syncGearUI();
+
+        // 第 1 關首次遊玩顯示倒車口訣教學
+        if (lvl.id === 1 && !saveData.tutorialSeen) {
+          saveData.tutorialSeen = true;
+          persistSave();
+          dom.tutorialModal.classList.remove('hidden');
+          dom.tutorialModal.classList.add('flex');
+        }
+      }
+
+      function getDefaultFollowZoom() {
+        const minSide = Math.min(window.innerWidth, window.innerHeight);
+        return clamp(minSide / 720, 0.68, 1.08);
+      }
+
+      /* ==========================================================
+         9. 子步進聯結車物理、碰撞與停靠判定
+         ========================================================== */
+      function updatePhysics(dt) {
+        const t = game.truck;
+        const inp = game.input;
+
+        if (game.hitCooldown > 0) game.hitCooldown -= dt;
+
+        // 1. 方向盤轉向輸入（鍵盤/觸控按鈕 或 直接拖曳方向盤）
+        const steerSpeed = 1.95;
+        if (inp.wheelDragging) {
+          const diff = inp.wheelTargetSteer - t.steer;
+          t.steer += clamp(diff, -4.5 * dt, 4.5 * dt);
+        } else if (inp.left && !inp.right) {
+          t.steer = clamp(t.steer - steerSpeed * dt, -TRUCK_CFG.maxSteer, TRUCK_CFG.maxSteer);
+        } else if (inp.right && !inp.left) {
+          t.steer = clamp(t.steer + steerSpeed * dt, -TRUCK_CFG.maxSteer, TRUCK_CFG.maxSteer);
+        } else {
+          // 隨車速自動回正方向盤（真實轉向手感）
+          const returnRate = (0.85 + Math.abs(t.v) / 140) * dt;
+          if (Math.abs(t.steer) <= returnRate) {
+            t.steer = 0;
+          } else {
+            t.steer -= Math.sign(t.steer) * returnRate;
+          }
+        }
+        t.turnSignal = t.steer < -0.2 ? -1 : t.steer > 0.2 ? 1 : 0;
+
+        // 2. 油門 / 煞車 / 排檔邏輯
+        let throttleActive = false;
+        t.brakeLight = false;
+        const prevBrakeLight = t.brakeLight;
+
+        if (t.handbrake) {
+          t.brakeLight = true;
+          const decel = TRUCK_CFG.brakeDecel * 1.4 * dt;
+          if (Math.abs(t.v) <= decel) t.v = 0;
+          else t.v -= Math.sign(t.v) * decel;
+        } else if (saveData.controlMode === 'auto') {
+          // 簡便模式：W 前進、S 煞車/倒車
+          if (inp.up && !inp.down) {
+            if (t.v < -8) {
+              t.v = Math.min(0, t.v + TRUCK_CFG.brakeDecel * dt);
+              t.brakeLight = true;
+            } else {
+              t.v = Math.min(TRUCK_CFG.maxForwardSpeed, t.v + TRUCK_CFG.accelForward * dt);
+              throttleActive = true;
+            }
+            t.gear = 'D';
+          } else if (inp.down && !inp.up) {
+            if (t.v > 8) {
+              t.v = Math.max(0, t.v - TRUCK_CFG.brakeDecel * dt);
+              t.brakeLight = true;
+            } else {
+              t.v = Math.max(TRUCK_CFG.maxReverseSpeed, t.v - TRUCK_CFG.accelReverse * dt);
+              throttleActive = true;
+              t.gear = 'R';
+            }
+          } else {
+            // 自然滑行阻力（颱風天路面稍滑）
+            const wetFactor = game.level.weather === 'typhoon' ? 0.72 : 1.0;
+            const drag = TRUCK_CFG.drag * wetFactor * dt;
+            if (Math.abs(t.v) <= drag) t.v = 0;
+            else t.v -= Math.sign(t.v) * drag;
+          }
+        } else {
+          // 擬真排檔模式：R/N/D 檔位，W 油門，S 煞車
+          if (inp.down) {
+            t.brakeLight = true;
+            const wetFactor = game.level.weather === 'typhoon' ? 0.8 : 1.0;
+            const decel = TRUCK_CFG.brakeDecel * wetFactor * dt;
+            if (Math.abs(t.v) <= decel) t.v = 0;
+            else t.v -= Math.sign(t.v) * decel;
+          } else if (inp.up) {
+            if (t.gear === 'D') {
+              t.v = Math.min(TRUCK_CFG.maxForwardSpeed, t.v + TRUCK_CFG.accelForward * dt);
+              throttleActive = true;
+            } else if (t.gear === 'R') {
+              t.v = Math.max(TRUCK_CFG.maxReverseSpeed, t.v - TRUCK_CFG.accelReverse * dt);
+              throttleActive = true;
+            } else {
+              // N 檔空催油門
+              throttleActive = true;
+              const drag = TRUCK_CFG.drag * 0.6 * dt;
+              if (Math.abs(t.v) <= drag) t.v = 0;
+              else t.v -= Math.sign(t.v) * drag;
+            }
+          } else {
+            const wetFactor = game.level.weather === 'typhoon' ? 0.72 : 1.0;
+            const drag = TRUCK_CFG.drag * wetFactor * dt;
+            if (Math.abs(t.v) <= drag) t.v = 0;
+            else t.v -= Math.sign(t.v) * drag;
+          }
+        }
+
+        t.reverseLight = (t.v < -2) || (saveData.controlMode === 'sim' && t.gear === 'R');
+
+        // 3. 4 子步進第五輪拖曳運動學積分（倒車與前進皆極度穩定不翻轉）
+        const SUBSTEPS = 4;
+        const sdt = dt / SUBSTEPS;
+
+        for (let step = 0; step < SUBSTEPS; step++) {
+          const prevX = t.x;
+          const prevY = t.y;
+          const prevAngle = t.angle;
+          const prevTrlAngle = t.trlAngle;
+
+          // 曳引車頭 Bicycle/Ackermann 模型
+          const angularVel = (t.v / TRUCK_CFG.cabWheelbase) * Math.tan(t.steer);
+          t.x += Math.cos(t.angle) * t.v * sdt;
+          t.y += Math.sin(t.angle) * t.v * sdt;
+          t.angle = normalizeAngle(t.angle + angularVel * sdt);
+
+          // 半拖車精準第五輪追蹤方程
+          const hitchDelta = normalizeAngle(t.angle - t.trlAngle);
+          const trlAngularVel = (t.v / t.trlWheelbase) * Math.sin(hitchDelta);
+          t.trlAngle = normalizeAngle(t.trlAngle + trlAngularVel * sdt);
+
+          // 折甘蔗 (Jackknife) 角度軟限位保護 (-80° ~ +80°)
+          let newDelta = normalizeAngle(t.angle - t.trlAngle);
+          if (Math.abs(newDelta) > TRUCK_CFG.dangerJackknife && Math.abs(newDelta) > Math.abs(hitchDelta)) {
+            // 接近極限角時提供阻尼阻力
+            t.v *= 0.94;
+          }
+          if (Math.abs(newDelta) > TRUCK_CFG.maxJackknife) {
+            const clampedDelta = Math.sign(newDelta) * TRUCK_CFG.maxJackknife;
+            t.trlAngle = normalizeAngle(t.angle - clampedDelta);
+            // 若倒車硬頂極限角，阻擋繼續擠壓避免穿模
+            if (t.v < 0 && Math.abs(newDelta) > Math.abs(hitchDelta)) {
+              t.x = prevX;
+              t.y = prevY;
+              t.angle = prevAngle;
+              t.trlAngle = prevTrlAngle;
+              t.v *= 0.25;
+            }
+          }
+
+          // OBB 靜態障礙物碰撞解析（每子步最多 2 次迭代確保不卡死）
+          resolveStaticCollisions();
+        }
+
+        // 4. 三角錐物理碰撞與滑行更新
+        updateCones(dt);
+
+        // 5. 排氣管微煙與輪胎胎痕特效
+        updateVehicleEffects(dt, throttleActive);
+
+        // 6. 倒車雷達最近障礙物距離偵測
+        game.radarDist = computeRearRadarDistance();
+
+        // 7. 音效即時調變
+        const isReversingSound = (t.v < -4) || (saveData.controlMode === 'sim' && t.gear === 'R' && !t.handbrake);
+        SoundFX.update(dt, true, Math.abs(t.v) / TRUCK_CFG.maxForwardSpeed, throttleActive, isReversingSound, game.radarDist);
+
+        // 8. 停靠檢核與過關判斷
+        evaluateDocking(dt);
+      }
+
+      function resolveStaticCollisions() {
+        const t = game.truck;
+        const obsList = game.level.obstacles;
+
+        for (let iter = 0; iter < 2; iter++) {
+          const cabOBB = getTractorOBB(t);
+          const trlOBB = getTrailerOBB(t);
+
+          for (let i = 0; i < obsList.length; i++) {
+            const ob = obsList[i];
+
+            // 檢查曳引車頭碰撞
+            const hitCab = testOBBCollision(cabOBB, ob);
+            if (hitCab) {
+              t.x += hitCab.nx * (hitCab.depth + 0.15);
+              t.y += hitCab.ny * (hitCab.depth + 0.15);
+              handleImpact(hitCab.nx, hitCab.ny, ob, false);
+            }
+
+            // 檢查貨櫃本體碰撞
+            const hitTrl = testOBBCollision(trlOBB, ob);
+            if (hitTrl) {
+              // 推開整車並對貨櫃施加輕微修正力矩，防止貨櫃卡角
+              t.x += hitTrl.nx * (hitTrl.depth * 0.78 + 0.15);
+              t.y += hitTrl.ny * (hitTrl.depth * 0.78 + 0.15);
+
+              // 計算推開方向對第五輪的轉矩符號
+              const rx = trlOBB.x - t.x;
+              const ry = trlOBB.y - t.y;
+              const torqueSign = Math.sign(rx * hitTrl.ny - ry * hitTrl.nx);
+              const rotPush = torqueSign * Math.min(0.025, hitTrl.depth * 0.0022);
+              const candidateAngle = normalizeAngle(t.trlAngle + rotPush);
+              if (Math.abs(normalizeAngle(t.angle - candidateAngle)) <= TRUCK_CFG.maxJackknife) {
+                t.trlAngle = candidateAngle;
+              }
+              handleImpact(hitTrl.nx, hitTrl.ny, ob, true);
+            }
+          }
+        }
+      }
+
+      function handleImpact(nx, ny, obstacle, isTrailer) {
+        const t = game.truck;
+        const dirAngle = isTrailer ? t.trlAngle : t.angle;
+        const vx = Math.cos(dirAngle) * t.v;
+        const vy = Math.sin(dirAngle) * t.v;
+        const normalSpeed = vx * nx + vy * ny; // < 0 代表正朝障礙物撞進去
+
+        if (normalSpeed < 0) {
+          const impactMag = Math.abs(normalSpeed);
+          // 柔和反彈與貼牆滑動
+          t.v *= -0.18;
+
+          // 輕碰卸貨月台防撞橡膠不扣血，其餘超過門檻才扣車況
+          const isSoftDock = obstacle.type === 'dock' && isTrailer && impactMag < 50;
+          if (!isSoftDock && impactMag > 22 && game.hitCooldown <= 0) {
+            const dmg = Math.max(2, Math.round((impactMag - 18) * 0.16));
+            game.integrity = Math.max(0, game.integrity - dmg);
+            game.hitCooldown = 0.42;
+            game.cam.shake = clamp(impactMag * 0.08, 3, 10);
+            SoundFX.playCrash(impactMag / 140);
+
+            if (game.integrity <= 0 && !game.level.isFreeRoam) {
+              showToast('💥 車輛嚴重受損！已自動拖吊重置關卡', 'warn');
+              setTimeout(() => startLevel(game.level.id), 900);
+            }
+          }
+        }
+      }
+
+      function updateCones(dt) {
+        const cabOBB = getTractorOBB();
+        const trlOBB = getTrailerOBB();
+        const t = game.truck;
+
+        for (let i = 0; i < game.cones.length; i++) {
+          const c = game.cones[i];
+          const hitA = testOBBCircle(cabOBB, c.x, c.y, 9);
+          const hitB = testOBBCircle(trlOBB, c.x, c.y, 9);
+          const hit = hitA || hitB;
+
+          if (hit) {
+            c.x += hit.nx * (hit.depth + 1);
+            c.y += hit.ny * (hit.depth + 1);
+            const kick = Math.max(70, Math.abs(t.v) * 1.45);
+            c.vx = hit.nx * kick + (Math.random() - 0.5) * 40;
+            c.vy = hit.ny * kick + (Math.random() - 0.5) * 40;
+            c.vrot = (Math.random() - 0.5) * 14;
+            if (!c.tipped) {
+              c.tipped = true;
+              game.conesKnocked++;
+              SoundFX.playConePop();
+            }
+          }
+
+          if (Math.abs(c.vx) > 0.5 || Math.abs(c.vy) > 0.5) {
+            c.x = clamp(c.x + c.vx * dt, 44, game.level.worldW - 44);
+            c.y = clamp(c.y + c.vy * dt, 44, game.level.worldH - 44);
+            c.rot += c.vrot * dt;
+            const friction = Math.pow(0.06, dt);
+            c.vx *= friction;
+            c.vy *= friction;
+            c.vrot *= friction;
+          }
+        }
+      }
+
+      function updateVehicleEffects(dt, throttleActive) {
+        const t = game.truck;
+
+        // 排氣管柴油輕煙
+        if (throttleActive && Math.random() < 0.35) {
+          const stackX = t.x + Math.cos(t.angle) * 26 - Math.sin(t.angle) * 20;
+          const stackY = t.y + Math.sin(t.angle) * 26 + Math.cos(t.angle) * 20;
+          game.smokeParticles.push({
+            x: stackX,
+            y: stackY,
+            vx: (Math.random() - 0.5) * 18 - Math.cos(t.angle) * 14,
+            vy: (Math.random() - 0.5) * 18 - Math.sin(t.angle) * 14,
+            r: 3 + Math.random() * 3,
+            alpha: 0.38
+          });
+        }
+
+        for (let i = game.smokeParticles.length - 1; i >= 0; i--) {
+          const p = game.smokeParticles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.r += 11 * dt;
+          p.alpha -= 0.55 * dt;
+          if (p.alpha <= 0) game.smokeParticles.splice(i, 1);
+        }
+
+        // 急轉彎或重煞車時留下淡化柏油胎痕
+        if (Math.abs(t.v) > 25 && (Math.abs(t.steer) > 0.44 || t.brakeLight || t.handbrake)) {
+          const rearAxleX = t.x - Math.cos(t.trlAngle) * t.trlWheelbase;
+          const rearAxleY = t.y - Math.sin(t.trlAngle) * t.trlWheelbase;
+          const perpX = -Math.sin(t.trlAngle) * 17;
+          const perpY = Math.cos(t.trlAngle) * 17;
+          game.skidMarks.push(
+            { x: rearAxleX + perpX, y: rearAxleY + perpY, a: t.trlAngle, alpha: 0.32 },
+            { x: rearAxleX - perpX, y: rearAxleY - perpY, a: t.trlAngle, alpha: 0.32 }
+          );
+          if (game.skidMarks.length > 260) {
+            game.skidMarks.splice(0, 2);
+          }
+        }
+        for (let i = game.skidMarks.length - 1; i >= 0; i--) {
+          game.skidMarks[i].alpha -= 0.025 * dt;
+          if (game.skidMarks[i].alpha <= 0) game.skidMarks.splice(i, 1);
+        }
+
+        // 颱風閃電與雨滴更新
+        if (game.level.weather === 'typhoon') {
+          for (let i = 0; i < game.rainDrops.length; i++) {
+            const d = game.rainDrops[i];
+            d.x -= d.speed * 0.24 * dt;
+            d.y += d.speed * dt;
+            if (d.y > window.innerHeight + 20) {
+              d.y = -20;
+              d.x = Math.random() * (window.innerWidth + 240);
+            }
+          }
+          game.lightningTimer -= dt;
+          if (game.lightningTimer <= 0) {
+            game.lightningAlpha = 0.38;
+            game.lightningTimer = 7 + Math.random() * 9;
+          }
+          if (game.lightningAlpha > 0) {
+            game.lightningAlpha = Math.max(0, game.lightningAlpha - 1.6 * dt);
+          }
+        }
+      }
+
+      // 計算貨櫃尾端後方三道雷達射線至障礙物的最短距離
+      function computeRearRadarDistance() {
+        const t = game.truck;
+        const rearDist = t.trlWheelbase + TRUCK_CFG.trailerRearOverhang;
+        const backDirX = -Math.cos(t.trlAngle);
+        const backDirY = -Math.sin(t.trlAngle);
+        const perpX = -backDirY;
+        const perpY = backDirX;
+
+        const baseX = t.x + backDirX * rearDist;
+        const baseY = t.y + backDirY * rearDist;
+
+        const sensors = [
+          { x: baseX, y: baseY },
+          { x: baseX + perpX * 17, y: baseY + perpY * 17 },
+          { x: baseX - perpX * 17, y: baseY - perpY * 17 }
+        ];
+
+        let minDist = 180;
+        const obsList = game.level.obstacles;
+
+        for (let s = 0; s < sensors.length; s++) {
+          const sx = sensors[s].x;
+          const sy = sensors[s].y;
+          // 步進射線檢測（每 10px 掃描至 160px）
+          for (let d = 8; d < minDist; d += 10) {
+            const px = sx + backDirX * d;
+            const py = sy + backDirY * d;
+            let blocked = false;
+            for (let i = 0; i < obsList.length; i++) {
+              const ob = obsList[i];
+              const dx = px - ob.x;
+              const dy = py - ob.y;
+              const c = Math.cos(-ob.angle);
+              const sn = Math.sin(-ob.angle);
+              const lx = dx * c - dy * sn;
+              const ly = dx * sn + dy * c;
+              if (Math.abs(lx) <= ob.w * 0.5 && Math.abs(ly) <= ob.h * 0.5) {
+                blocked = true;
+                break;
+              }
+            }
+            if (blocked) {
+              minDist = d;
+              break;
+            }
+          }
+        }
+        return minDist;
+      }
+
+      /* ==========================================================
+         10. 即時停靠檢核與通關結算
+         ========================================================== */
+      function evaluateDocking(dt) {
+        const t = game.truck;
+        const trlOBB = getTrailerOBB(t);
+        const trlCorners = getOBBCorners(trlOBB.x, trlOBB.y, trlOBB.w, trlOBB.h, trlOBB.angle);
+
+        // 找出距離貨櫃最近的目標車格
+        let nearestBay = null;
+        let nearestDist = Infinity;
+        for (const bay of game.level.bays) {
+          const d = Math.hypot(trlOBB.x - bay.x, trlOBB.y - bay.y);
+          if (d < nearestDist) {
+            nearestDist = d;
+            nearestBay = bay;
+          }
+        }
+
+        if (!nearestBay || nearestDist > 380) {
+          game.dock.activeBay = null;
+          game.dock.holdTimer = 0;
+          return;
+        }
+
+        game.dock.activeBay = nearestBay;
+
+        // 檢查貨櫃 4 個角點是否皆位於車格範圍內（含適度寬容度）
+        const c = Math.cos(-nearestBay.angle);
+        const s = Math.sin(-nearestBay.angle);
+        const halfW = nearestBay.w * 0.5 + 8;
+        const halfH = nearestBay.h * 0.5 + 5;
+
+        let insideCount = 0;
+        for (const pt of trlCorners) {
+          const dx = pt.x - nearestBay.x;
+          const dy = pt.y - nearestBay.y;
+          const lx = dx * c - dy * s;
+          const ly = dx * s + dy * c;
+          if (Math.abs(lx) <= halfW && Math.abs(ly) <= halfH) {
+            insideCount++;
+          }
+        }
+
+        const inBay = insideCount === 4;
+        const trlAngleErr = Math.abs(normalizeAngle(t.trlAngle - nearestBay.angle));
+        const cabAngleErr = Math.abs(normalizeAngle(t.angle - nearestBay.angle));
+        const aligned = (trlAngleErr < 9.5 * Math.PI / 180) && (cabAngleErr < 22 * Math.PI / 180);
+        const stopped = Math.abs(t.v) < 4.5 || t.handbrake;
+
+        // 計算停靠精準度百分比
+        const dxCenter = trlOBB.x - nearestBay.x;
+        const dyCenter = trlOBB.y - nearestBay.y;
+        const ldx = Math.abs(dxCenter * c - dyCenter * s);
+        const ldy = Math.abs(dxCenter * s + dyCenter * c);
+        const posScore = clamp(1 - (ldx / 38 + ldy / 22) * 0.5, 0, 1);
+        const angScore = clamp(1 - trlAngleErr / (14 * Math.PI / 180), 0, 1);
+        const precision = Math.round((posScore * 0.6 + angScore * 0.4) * 100);
+
+        game.dock.inBay = inBay;
+        game.dock.aligned = aligned;
+        game.dock.stopped = stopped;
+        game.dock.precision = inBay ? Math.max(60, precision) : Math.round((insideCount / 4) * 55);
+
+        if (inBay && aligned && stopped) {
+          // 拉上手煞車立刻完成，或穩定停駐 0.8 秒自動完成
+          game.dock.holdTimer += t.handbrake ? 1.0 : dt;
+          if (game.dock.holdTimer >= 0.8) {
+            onBayDocked(nearestBay);
+          }
+        } else {
+          game.dock.holdTimer = Math.max(0, game.dock.holdTimer - dt * 2);
+        }
+      }
+
+      function onBayDocked(bay) {
+        if (game.level.isFreeRoam) {
+          game.dock.holdTimer = 0;
+          if (!game.freeRoamCompletedBays.has(bay.label)) {
+            game.freeRoamCompletedBays.add(bay.label);
+            SoundFX.playVictory();
+            showToast(`🎯 成功停妥「${bay.label}」！精準度 ${game.dock.precision}%`, 'success');
+          }
+          return;
+        }
+
+        // 正式關卡過關結算
+        game.screen = 'result';
+        game.truck.v = 0;
+        SoundFX.stopHorn();
+        SoundFX.playVictory();
+
+        const lvl = game.level;
+        const prec = game.dock.precision;
+        const integ = game.integrity;
+        const sec = Math.floor(game.elapsed);
+
+        let stars = 1;
+        if (integ >= 70 && (sec <= lvl.twoStarTime || prec >= 80)) stars = 2;
+        if (integ >= 90 && sec <= lvl.threeStarTime && prec >= 85) stars = 3;
+
+        const baseReward = Math.round(lvl.baseReward * (0.6 + stars * 0.2));
+        const noAssistBonus = !saveData.assistLines ? Math.round(baseReward * 0.2) : 0;
+        const conePenalty = game.conesKnocked * 25;
+        const totalReward = Math.max(100, baseReward + noAssistBonus - conePenalty);
+
+        // 寫入進度存檔
+        saveData.money += totalReward;
+        if (!saveData.stars[lvl.id] || stars > saveData.stars[lvl.id]) {
+          saveData.stars[lvl.id] = stars;
+        }
+        if (!saveData.bestTime[lvl.id] || sec < saveData.bestTime[lvl.id]) {
+          saveData.bestTime[lvl.id] = sec;
+        }
+        persistSave();
+
+        // 顯示結算 Modal
+        dom.resLevelTitle.textContent = `${lvl.code} ${lvl.name}`;
+        dom.resStarsRow.innerHTML = [1, 2, 3]
+          .map(i => `<span class="${i <= stars ? 'text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.7)]' : 'text-slate-700'}">★</span>`)
+          .join('');
+        dom.resTime.textContent = formatTime(sec);
+        dom.resIntegrity.textContent = `${integ}%`;
+        dom.resPrecision.textContent = `${prec}%`;
+
+        dom.resBaseReward.textContent = `+NT$ ${baseReward.toLocaleString()}`;
+        dom.resHardcoreRow.classList.toggle('hidden', noAssistBonus <= 0);
+        dom.resHardcoreBonus.textContent = `+NT$ ${noAssistBonus.toLocaleString()}`;
+        dom.resConeRow.classList.toggle('hidden', conePenalty <= 0);
+        dom.resConePenalty.textContent = `-NT$ ${conePenalty.toLocaleString()}`;
+        dom.resTotalReward.textContent = `+NT$ ${totalReward.toLocaleString()}`;
+
+        const hasNext = lvl.id >= 1 && lvl.id < 8;
+        dom.btnResultNext.classList.toggle('hidden', !hasNext);
+        dom.resultModal.classList.remove('hidden');
+        dom.resultModal.classList.add('flex');
+      }
+
+      /* ==========================================================
+         11. 攝影機平滑跟隨與 2.5D 頂視角繪圖引擎
+         ========================================================== */
+      function updateCamera(dt) {
+        const lvl = game.level;
+        const t = game.truck;
+        const trlOBB = getTrailerOBB(t);
+
+        let targetX, targetY, targetZoom;
+        if (game.cam.overview) {
+          targetX = lvl.worldW * 0.5;
+          targetY = lvl.worldH * 0.5;
+          const padX = window.innerWidth / (lvl.worldW + 120);
+          const padY = window.innerHeight / (lvl.worldH + 200);
+          targetZoom = Math.min(padX, padY);
+        } else {
+          // 攝影機錨定在車頭與貨櫃重心之間，並朝移動方向柔和前瞻
+          const midX = (t.x + trlOBB.x) * 0.5;
+          const midY = (t.y + trlOBB.y) * 0.5;
+          const lookAhead = clamp(t.v * 0.55, -85, 95);
+          const lookDir = t.v >= 0 ? t.angle : t.trlAngle;
+          targetX = midX + Math.cos(lookDir) * lookAhead;
+          targetY = midY + Math.sin(lookDir) * lookAhead;
+          targetZoom = getDefaultFollowZoom();
+        }
+
+        const smooth = 1 - Math.pow(0.004, dt);
+        game.cam.x += (targetX - game.cam.x) * smooth;
+        game.cam.y += (targetY - game.cam.y) * smooth;
+        game.cam.zoom += (targetZoom - game.cam.zoom) * smooth;
+
+        if (game.cam.shake > 0) {
+          game.cam.shake = Math.max(0, game.cam.shake - 26 * dt);
+        }
+      }
+
+      function renderScene(nowMs) {
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+        const lvl = game.level;
+
+        ctx.save();
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, W, H);
+
+        // 攝影機變換（含碰撞微震）
+        const shakeX = game.cam.shake ? (Math.random() - 0.5) * game.cam.shake : 0;
+        const shakeY = game.cam.shake ? (Math.random() - 0.5) * game.cam.shake : 0;
+
+        ctx.translate(W * 0.5 + shakeX, H * 0.5 + shakeY);
+        ctx.scale(game.cam.zoom, game.cam.zoom);
+        ctx.translate(-game.cam.x, -game.cam.y);
+
+        // 1. 柏油場地底層與港口水域裝飾
+        drawGroundAndMarkings(lvl, nowMs);
+
+        // 2. 輪胎胎痕
+        for (let i = 0; i < game.skidMarks.length; i++) {
+          const m = game.skidMarks[i];
+          ctx.save();
+          ctx.translate(m.x, m.y);
+          ctx.rotate(m.a);
+          ctx.fillStyle = `rgba(10, 12, 16, ${m.alpha})`;
+          ctx.fillRect(-5, -2.2, 10, 4.4);
+          ctx.restore();
+        }
+
+        // 3. 目標停車格（綠色發光導引箭頭＋月台防撞橡膠）
+        for (const bay of lvl.bays) {
+          drawTargetBay(bay, nowMs);
+        }
+
+        // 4. 動態倒車輔助預測軌跡線（開啟輔助線時繪製）
+        if (saveData.assistLines) {
+          drawReverseGuideLines();
+        }
+
+        // 5. 可撞飛橘白三角錐
+        for (const cone of game.cones) {
+          drawTrafficCone(cone);
+        }
+
+        // 6. 靜態障礙物（建築、月台、彩色波紋貨櫃、停放車輛、安全島）
+        for (const ob of lvl.obstacles) {
+          drawObstacle(ob);
+        }
+
+        // 7. 玩家聯結車（先畫貨櫃與連結線，再畫曳引車頭）
+        drawPlayerRig(nowMs);
+
+        // 8. 柴油排氣煙霧
+        for (const p of game.smokeParticles) {
+          ctx.fillStyle = `rgba(203, 213, 225, ${p.alpha})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 9. 天候光影層（黃昏、傍晚、深夜、颱風暴雨與車頭燈光錐）
+        drawWeatherAndLighting(lvl, nowMs);
+
+        ctx.restore();
+
+        // 10. 螢幕空間颱風暴雨雨線與閃電
+        if (lvl.weather === 'typhoon') {
+          drawTyphoonRainOverlay(W, H);
+        }
+      }
+
+      function drawGroundAndMarkings(lvl, nowMs) {
+        // 柏油質感路面
+        ctx.fillStyle = asphaltPattern || '#27313f';
+        ctx.fillRect(0, 0, lvl.worldW, lvl.worldH);
+
+        // 颱風天濕滑路面微光澤
+        if (lvl.weather === 'typhoon') {
+          const grad = ctx.createLinearGradient(0, 0, lvl.worldW, lvl.worldH);
+          grad.addColorStop(0, 'rgba(56, 189, 248, 0.06)');
+          grad.addColorStop(0.5, 'rgba(15, 23, 42, 0.14)');
+          grad.addColorStop(1, 'rgba(56, 189, 248, 0.08)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, lvl.worldW, lvl.worldH);
+        }
+
+        // 高雄港關卡：右側港灣藍海與岸邊警示線
+        if (lvl.weather === 'port') {
+          ctx.fillStyle = '#0369a1';
+          ctx.fillRect(lvl.worldW - 110, 0, 110, lvl.worldH);
+          ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+          ctx.lineWidth = 3;
+          const waveShift = Math.sin(nowMs * 0.002) * 8;
+          for (let y = 40; y < lvl.worldH; y += 70) {
+            ctx.beginPath();
+            ctx.moveTo(lvl.worldW - 92 + waveShift, y);
+            ctx.lineTo(lvl.worldW - 25 + waveShift, y + 12);
+            ctx.stroke();
+          }
+        }
+
+        // 廠區邊界安全黃線
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.35)';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(46, 46, lvl.worldW - 92, lvl.worldH - 92);
+
+        // 地面行車虛線標誌
+        if (lvl.markings) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(248, 250, 252, 0.25)';
+          ctx.lineWidth = 4;
+          ctx.setLineDash([24, 22]);
+          for (const m of lvl.markings) {
+            if (m.type === 'dashedLine') {
+              ctx.beginPath();
+              ctx.moveTo(m.x1, m.y1);
+              ctx.lineTo(m.x2, m.y2);
+              ctx.stroke();
+            }
+          }
+          ctx.restore();
+        }
+      }
+
+      function drawTargetBay(bay, nowMs) {
+        const isCurrent = game.dock.activeBay === bay;
+        const isReady = isCurrent && game.dock.inBay && game.dock.aligned;
+        const pulse = 0.55 + 0.45 * Math.sin(nowMs * 0.006);
+
+        ctx.save();
+        ctx.translate(bay.x, bay.y);
+        ctx.rotate(bay.angle);
+
+        const hw = bay.w * 0.5;
+        const hh = bay.h * 0.5;
+
+        // 車格底色發光
+        ctx.fillStyle = isReady
+          ? `rgba(16, 185, 129, ${0.26 + pulse * 0.14})`
+          : `rgba(16, 185, 129, ${0.12 + pulse * 0.07})`;
+        ctx.fillRect(-hw, -hh, bay.w, bay.h);
+
+        // 黃綠邊框虛線
+        ctx.strokeStyle = isReady ? '#34d399' : '#10b981';
+        ctx.lineWidth = isReady ? 4.5 : 3;
+        ctx.setLineDash([14, 8]);
+        ctx.strokeRect(-hw, -hh, bay.w, bay.h);
+        ctx.setLineDash([]);
+
+        // 四角 L 型對位角標
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 4;
+        const corner = 18;
+        [[-hw, -hh, 1, 1], [hw, -hh, -1, 1], [-hw, hh, 1, -1], [hw, hh, -1, -1]].forEach(([cx, cy, sx, sy]) => {
+          ctx.beginPath();
+          ctx.moveTo(cx + sx * corner, cy);
+          ctx.lineTo(cx, cy);
+          ctx.lineTo(cx, cy + sy * corner);
+          ctx.stroke();
+        });
+
+        // 指示貨櫃「倒車進入方向」的動態箭頭（指向車頭朝向 +X 或倒車往 -X）
+        ctx.fillStyle = `rgba(52, 211, 153, ${0.35 + pulse * 0.4})`;
+        for (let i = -1; i <= 1; i++) {
+          const ax = i * 44;
+          ctx.beginPath();
+          ctx.moveTo(ax - 12, 0);
+          ctx.lineTo(ax + 6, -12);
+          ctx.lineTo(ax + 6, 12);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        // 後方防撞橡膠塊 (Dock Rubber Bumpers)
+        if (bay.bumperSide === 'rear') {
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(-hw - 7, -hh + 6, 8, 18);
+          ctx.fillRect(-hw - 7, hh - 24, 8, 18);
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(-hw - 3, -hh + 8, 3, 14);
+          ctx.fillRect(-hw - 3, hh - 22, 3, 14);
+        }
+
+        // 車格文字標籤
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.font = '900 13px "Noto Sans TC", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(bay.label || '目標車格', 0, hh + 16);
+
+        ctx.restore();
+      }
+
+      // 動態模擬未來 2.2 秒的倒車/前進預測軌跡曲線
+      function drawReverseGuideLines() {
+        const t = game.truck;
+        const simDir = (saveData.controlMode === 'sim' ? (t.gear === 'R' ? -1 : 1) : (t.v < -1 || game.input.down ? -1 : 1));
+        if (simDir >= 0 && Math.abs(t.v) < 5) {
+          // 靜止時預設顯示倒車預測線，方便規劃倒車角度
+          drawProjectedPath(-1);
+        } else {
+          drawProjectedPath(simDir);
+        }
+      }
+
+      function drawProjectedPath(dir) {
+        const t = game.truck;
+        let sx = t.x;
+        let sy = t.y;
+        let sAng = t.angle;
+        let sTrl = t.trlAngle;
+        const simSpeed = dir * 90;
+        const stepDt = 0.06;
+        const steps = 36;
+        const rearLen = t.trlWheelbase + TRUCK_CFG.trailerRearOverhang;
+        const halfW = TRUCK_CFG.trailerWidth * 0.5;
+
+        const leftPts = [];
+        const rightPts = [];
+
+        for (let i = 0; i < steps; i++) {
+          const angVel = (simSpeed / TRUCK_CFG.cabWheelbase) * Math.tan(t.steer);
+          sx += Math.cos(sAng) * simSpeed * stepDt;
+          sy += Math.sin(sAng) * simSpeed * stepDt;
+          sAng = normalizeAngle(sAng + angVel * stepDt);
+
+          const delta = normalizeAngle(sAng - sTrl);
+          sTrl = normalizeAngle(sTrl + (simSpeed / t.trlWheelbase) * Math.sin(delta) * stepDt);
+          const nd = normalizeAngle(sAng - sTrl);
+          if (Math.abs(nd) > TRUCK_CFG.maxJackknife) break;
+
+          if (dir < 0) {
+            const rx = sx - Math.cos(sTrl) * rearLen;
+            const ry = sy - Math.sin(sTrl) * rearLen;
+            const px = -Math.sin(sTrl) * halfW;
+            const py = Math.cos(sTrl) * halfW;
+            leftPts.push({ x: rx + px, y: ry + py });
+            rightPts.push({ x: rx - px, y: ry - py });
+          } else {
+            const fx = sx + Math.cos(sAng) * 76;
+            const fy = sy + Math.sin(sAng) * 76;
+            const px = -Math.sin(sAng) * (TRUCK_CFG.cabWidth * 0.5);
+            const py = Math.cos(sAng) * (TRUCK_CFG.cabWidth * 0.5);
+            leftPts.push({ x: fx + px, y: fy + py });
+            rightPts.push({ x: fx - px, y: fy - py });
+          }
+        }
+
+        if (leftPts.length < 2) return;
+
+        ctx.save();
+        ctx.strokeStyle = dir < 0 ? 'rgba(251, 191, 36, 0.65)' : 'rgba(56, 189, 248, 0.5)';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([8, 7]);
+
+        [leftPts, rightPts].forEach(pts => {
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.stroke();
+        });
+
+        // 橫向距離刻度線
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1.8;
+        for (let i = 6; i < leftPts.length; i += 8) {
+          ctx.strokeStyle = i < 14 ? 'rgba(239, 68, 68, 0.55)' : 'rgba(251, 191, 36, 0.45)';
+          ctx.beginPath();
+          ctx.moveTo(leftPts[i].x, leftPts[i].y);
+          ctx.lineTo(rightPts[i].x, rightPts[i].y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawTrafficCone(c) {
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.rotate(c.rot);
+
+        // 陰影
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath();
+        ctx.arc(2, 3, 9, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (c.tipped) {
+          // 倒地三角錐外觀
+          ctx.fillStyle = '#ea580c';
+          ctx.beginPath();
+          ctx.moveTo(-7, -6);
+          ctx.lineTo(10, 0);
+          ctx.lineTo(-7, 6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = '#f8fafc';
+          ctx.fillRect(-1, -3.5, 4, 7);
+        } else {
+          // 站立橘白反光三角錐
+          ctx.fillStyle = '#c2410c';
+          ctx.fillRect(-8, -8, 16, 16);
+          ctx.fillStyle = '#f97316';
+          ctx.beginPath();
+          ctx.arc(0, 0, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#f8fafc';
+          ctx.beginPath();
+          ctx.arc(0, 0, 4.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ea580c';
+          ctx.beginPath();
+          ctx.arc(0, 0, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawObstacle(ob) {
+        ctx.save();
+        ctx.translate(ob.x, ob.y);
+        ctx.rotate(ob.angle);
+        const hw = ob.w * 0.5;
+        const hh = ob.h * 0.5;
+
+        // 2.5D 立體陰影
+        if (ob.type !== 'wall') {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.36)';
+          ctx.fillRect(-hw + 7, -hh + 9, ob.w, ob.h);
+        }
+
+        if (ob.type === 'wall') {
+          ctx.fillStyle = '#334155';
+          ctx.fillRect(-hw, -hh, ob.w, ob.h);
+          ctx.strokeStyle = '#64748b';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(-hw, -hh, ob.w, ob.h);
+        } else if (ob.type === 'building' || ob.type === 'dock') {
+          // 屋頂底色
+          ctx.fillStyle = ob.type === 'dock' ? '#475569' : '#334155';
+          ctx.fillRect(-hw, -hh, ob.w, ob.h);
+
+          // 屋頂鐵皮波紋線
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+          ctx.lineWidth = 2;
+          for (let x = -hw + 16; x < hw; x += 22) {
+            ctx.beginPath();
+            ctx.moveTo(x, -hh + 6);
+            ctx.lineTo(x, hh - 6);
+            ctx.stroke();
+          }
+
+          // 屋頂女兒牆邊框
+          ctx.strokeStyle = ob.type === 'dock' ? '#f59e0b' : '#94a3b8';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(-hw + 2, -hh + 2, ob.w - 4, ob.h - 4);
+
+          // 屋頂冷氣室外機細節
+          if (ob.w > 180 && ob.h > 100) {
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(-hw + 22, -hh + 18, 36, 26);
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            ctx.arc(-hw + 40, -hh + 31, 9, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // 建築名稱牌
+          if (ob.label) {
+            ctx.fillStyle = 'rgba(248, 250, 252, 0.88)';
+            ctx.font = '900 16px "Noto Sans TC", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(ob.label, 0, 0);
+          }
+        } else if (ob.type === 'barrier') {
+          // 黃黑警示紐澤西水泥護欄
+          ctx.fillStyle = '#475569';
+          ctx.fillRect(-hw, -hh, ob.w, ob.h);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(-hw, -hh, ob.w, ob.h);
+          ctx.clip();
+          ctx.fillStyle = '#f59e0b';
+          for (let x = -hw - ob.h; x < hw + ob.h; x += 36) {
+            ctx.beginPath();
+            ctx.moveTo(x, -hh);
+            ctx.lineTo(x + 16, -hh);
+            ctx.lineTo(x + 16 - ob.h, hh);
+            ctx.lineTo(x - ob.h, hh);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(-hw, -hh, ob.w, ob.h);
+        } else if (ob.type === 'container') {
+          drawContainerGraphic(ob.w, ob.h, ob.color || '#0d9488', '#ffffff', ob.brand || 'CARGO', '#ffffff');
+        } else if (ob.type === 'parkedTruck') {
+          // 停放的靜態大型半拖車（含貨櫃＋車頭）
+          const trlW = ob.w * 0.72;
+          const cabW = ob.w * 0.25;
+          ctx.save();
+          ctx.translate(-ob.w * 0.14, 0);
+          drawContainerGraphic(trlW, ob.h, ob.color || '#2563eb', '#e2e8f0', 'FREIGHT', '#ffffff');
+          ctx.restore();
+
+          // 靜態車頭
+          ctx.fillStyle = '#e2e8f0';
+          roundRectPath(ctx, hw - cabW, -hh + 2, cabW, ob.h - 4, 6);
+          ctx.fill();
+          ctx.fillStyle = '#1e293b';
+          roundRectPath(ctx, hw - 14, -hh + 6, 10, ob.h - 12, 3);
+          ctx.fill();
+        } else if (ob.type === 'van') {
+          // 路邊臨停小貨車/廂型車
+          ctx.fillStyle = ob.color || '#f8fafc';
+          roundRectPath(ctx, -hw, -hh, ob.w, ob.h, 8);
+          ctx.fill();
+          ctx.strokeStyle = '#334155';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          // 擋風玻璃
+          ctx.fillStyle = '#0f172a';
+          roundRectPath(ctx, hw - 26, -hh + 5, 16, ob.h - 10, 3);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+
+      // 共用貨櫃屋頂波紋與塗裝繪製
+      function drawContainerGraphic(w, h, mainColor, stripeColor, brandText, textColor) {
+        const hw = w * 0.5;
+        const hh = h * 0.5;
+
+        ctx.fillStyle = mainColor;
+        roundRectPath(ctx, -hw, -hh, w, h, 3);
+        ctx.fill();
+
+        // 波紋鋼板凹凸條紋
+        ctx.fillStyle = 'rgba(0,0,0,0.12)';
+        for (let x = -hw + 8; x < hw - 8; x += 12) {
+          ctx.fillRect(x, -hh + 3, 5, h - 6);
+        }
+
+        // 塗裝飾條
+        ctx.fillStyle = stripeColor;
+        ctx.fillRect(-hw + 4, -hh + 3, w - 8, 3);
+        ctx.fillRect(-hw + 4, hh - 6, w - 8, 3);
+
+        // 品牌字樣
+        if (brandText) {
+          ctx.fillStyle = textColor;
+          ctx.font = '900 13px "JetBrains Mono", "Noto Sans TC", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(brandText, 0, 0);
+        }
+
+        // 四角吊裝鎖孔
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(-hw + 2, -hh + 2, 5, 5);
+        ctx.fillRect(hw - 7, -hh + 2, 5, 5);
+        ctx.fillRect(-hw + 2, hh - 7, 5, 5);
+        ctx.fillRect(hw - 7, hh - 7, 5, 5);
+
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.7)';
+        ctx.lineWidth = 1.8;
+        roundRectPath(ctx, -hw, -hh, w, h, 3);
+        ctx.stroke();
+      }
+
+      /* ==========================================================
+         12. 玩家聯結車（半拖車＋第五輪＋曳引車頭）精細繪製
+         ========================================================== */
+      function drawPlayerRig(nowMs) {
+        const t = game.truck;
+        const liv = getCurrentLivery();
+        const trlOBB = getTrailerOBB(t);
+        const blinkOn = Math.floor(nowMs / 360) % 2 === 0;
+
+        // ---------- A. 繪製半拖車貨櫃 (Trailer) ----------
+        ctx.save();
+        ctx.translate(trlOBB.x, trlOBB.y);
+        ctx.rotate(trlOBB.angle);
+
+        const tw = trlOBB.w;
+        const th = trlOBB.h;
+        const thw = tw * 0.5;
+        const thh = th * 0.5;
+
+        // 貨櫃底盤陰影
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+        roundRectPath(ctx, -thw + 6, -thh + 8, tw, th, 4);
+        ctx.fill();
+
+        // 貨櫃雙後軸輪胎（露出微邊）
+        ctx.fillStyle = '#090d16';
+        [-thw + 22, -thw + 42].forEach(wx => {
+          ctx.fillRect(wx - 8, -thh - 2, 16, 4);
+          ctx.fillRect(wx - 8, thh - 2, 16, 4);
+        });
+
+        // 貨櫃本體與塗裝
+        drawContainerGraphic(tw, th, liv.trailerColor, liv.trailerStripe, liv.brand, liv.brandColor);
+
+        // 貨櫃尾門反光紅白條
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(-thw, -thh + 4, 3, 10);
+        ctx.fillRect(-thw, thh - 14, 3, 10);
+
+        // 貨櫃尾燈（煞車紅光 & 倒車白光）
+        if (t.brakeLight || t.headlights) {
+          ctx.fillStyle = t.brakeLight ? '#ff2a2a' : '#b91c1c';
+          ctx.shadowColor = '#ef4444';
+          ctx.shadowBlur = t.brakeLight ? 16 : 6;
+          ctx.fillRect(-thw - 2, -thh + 5, 4, 8);
+          ctx.fillRect(-thw - 2, thh - 13, 4, 8);
+          ctx.shadowBlur = 0;
+        }
+        if (t.reverseLight) {
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#e0f2fe';
+          ctx.shadowBlur = 14;
+          ctx.fillRect(-thw - 2, -thh + 15, 4, 6);
+          ctx.fillRect(-thw - 2, thh - 21, 4, 6);
+          ctx.shadowBlur = 0;
+        }
+        // 貨櫃方向燈
+        if (blinkOn && t.turnSignal !== 0) {
+          ctx.fillStyle = '#fbbf24';
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 12;
+          const sy = t.turnSignal < 0 ? -thh + 1 : thh - 6;
+          ctx.fillRect(-thw - 2, sy, 4, 5);
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.restore();
+
+        // ---------- B. 繪製曳引車頭 (Tractor) ----------
+        ctx.save();
+        ctx.translate(t.x, t.y);
+        ctx.rotate(t.angle);
+
+        // 車頭整體底盤陰影
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.44)';
+        roundRectPath(ctx, -18 + 5, -22 + 7, 96, 44, 8);
+        ctx.fill();
+
+        // 大樑底盤 (Chassis Frame)
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(-18, -14, 84, 28);
+
+        // 後雙輪組（驅動軸在 x = 0）
+        ctx.fillStyle = '#090d16';
+        ctx.fillRect(-11, -24, 22, 7);
+        ctx.fillRect(-11, 17, 22, 7);
+
+        // 第五輪拖車盤 (Fifth-wheel plate)
+        ctx.fillStyle = '#475569';
+        ctx.beginPath();
+        ctx.arc(0, 0, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#94a3b8';
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 可轉向前導輪（隨 steering 即時旋轉！）
+        [-21, 21].forEach(wy => {
+          ctx.save();
+          ctx.translate(TRUCK_CFG.cabWheelbase, wy);
+          ctx.rotate(t.steer);
+          ctx.fillStyle = '#090d16';
+          roundRectPath(ctx, -10, -4, 20, 8, 2);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // 排氣煙囪（駕駛室左後方）
+        ctx.fillStyle = '#cbd5e1';
+        ctx.beginPath();
+        ctx.arc(24, -19, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 駕駛室主體 (Cab Body)
+        ctx.fillStyle = liv.cabPrimary;
+        roundRectPath(ctx, 26, -21, 52, 42, 8);
+        ctx.fill();
+
+        // 駕駛室塗裝飾條
+        ctx.fillStyle = liv.cabAccent;
+        ctx.fillRect(30, -21, 10, 42);
+        ctx.fillRect(68, -19, 5, 38);
+
+        // 車頂立體蓋與天窗
+        ctx.fillStyle = liv.cabRoof;
+        roundRectPath(ctx, 32, -16, 26, 32, 5);
+        ctx.fill();
+
+        // 前擋風玻璃 (Windshield)
+        ctx.fillStyle = '#0f172a';
+        roundRectPath(ctx, 59, -17, 13, 34, 4);
+        ctx.fill();
+        // 擋風玻璃反光條
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(62, -13);
+        ctx.lineTo(68, -3);
+        ctx.stroke();
+
+        // 左右凸出後照鏡 (Side Mirrors)
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(64, -21); ctx.lineTo(69, -29);
+        ctx.moveTo(64, 21);  ctx.lineTo(69, 29);
+        ctx.stroke();
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(65, -32, 6, 4);
+        ctx.fillRect(65, 28, 6, 4);
+
+        // 駕駛室外框線
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.75)';
+        ctx.lineWidth = 1.8;
+        roundRectPath(ctx, 26, -21, 52, 42, 8);
+        ctx.stroke();
+
+        // 車頭大燈發光點
+        if (t.headlights) {
+          ctx.fillStyle = '#fef08a';
+          ctx.shadowColor = '#fde047';
+          ctx.shadowBlur = 16;
+          ctx.fillRect(76, -17, 3, 7);
+          ctx.fillRect(76, 10, 3, 7);
+          ctx.shadowBlur = 0;
+        }
+
+        // 車頭方向燈
+        if (blinkOn && t.turnSignal !== 0) {
+          ctx.fillStyle = '#f59e0b';
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 10;
+          const fy = t.turnSignal < 0 ? -20 : 16;
+          ctx.fillRect(74, fy, 4, 4);
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.restore();
+      }
+
+      /* ==========================================================
+         13. 天候色調、動態體積車頭燈光錐與暴雨特效
+         ========================================================== */
+      function drawWeatherAndLighting(lvl, nowMs) {
+        const t = game.truck;
+
+        // 黃昏暖金夕陽濾鏡
+        if (lvl.weather === 'sunset') {
+          ctx.fillStyle = 'rgba(234, 88, 12, 0.14)';
+          ctx.fillRect(0, 0, lvl.worldW, lvl.worldH);
+        } else if (lvl.weather === 'dusk') {
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.34)';
+          ctx.fillRect(0, 0, lvl.worldW, lvl.worldH);
+        } else if (lvl.weather === 'night' || lvl.weather === 'typhoon') {
+          const darkAlpha = lvl.weather === 'typhoon' ? 0.58 : 0.48;
+          ctx.fillStyle = `rgba(2, 6, 23, ${darkAlpha})`;
+          ctx.fillRect(0, 0, lvl.worldW, lvl.worldH);
+
+          // 目標卸貨車格上方探照燈光暈（方便夜間識別車格）
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          for (const bay of lvl.bays) {
+            const g = ctx.createRadialGradient(bay.x, bay.y, 10, bay.x, bay.y, 210);
+            g.addColorStop(0, 'rgba(52, 211, 153, 0.25)');
+            g.addColorStop(0.6, 'rgba(251, 191, 36, 0.10)');
+            g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(bay.x, bay.y, 210, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+
+        // 車頭體積大燈光錐（開燈即顯示，夜間/暴雨更耀眼）
+        if (t.headlights) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.translate(t.x, t.y);
+          ctx.rotate(t.angle);
+
+          const beamAlpha = (lvl.weather === 'night' || lvl.weather === 'typhoon') ? 0.34 : 0.16;
+          [-14, 14].forEach(ly => {
+            const grad = ctx.createLinearGradient(76, ly, 360, ly);
+            grad.addColorStop(0, `rgba(254, 249, 195, ${beamAlpha})`);
+            grad.addColorStop(1, 'rgba(254, 249, 195, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(76, ly - 4);
+            ctx.lineTo(360, ly - 58);
+            ctx.lineTo(360, ly + 58);
+            ctx.lineTo(76, ly + 4);
+            ctx.closePath();
+            ctx.fill();
+          });
+          ctx.restore();
+        }
+
+        // 倒車白色探照光錐
+        if (t.reverseLight) {
+          const rearDist = t.trlWheelbase + TRUCK_CFG.trailerRearOverhang;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.translate(t.x, t.y);
+          ctx.rotate(t.trlAngle);
+
+          const revAlpha = (lvl.weather === 'night' || lvl.weather === 'typhoon') ? 0.28 : 0.12;
+          const grad = ctx.createLinearGradient(-rearDist, 0, -rearDist - 150, 0);
+          grad.addColorStop(0, `rgba(224, 242, 254, ${revAlpha})`);
+          grad.addColorStop(1, 'rgba(224, 242, 254, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.moveTo(-rearDist, -18);
+          ctx.lineTo(-rearDist - 150, -56);
+          ctx.lineTo(-rearDist - 150, 56);
+          ctx.lineTo(-rearDist, 18);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawTyphoonRainOverlay(W, H) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(186, 230, 253, 0.38)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        for (let i = 0; i < game.rainDrops.length; i++) {
+          const d = game.rainDrops[i];
+          ctx.moveTo(d.x, d.y);
+          ctx.lineTo(d.x - d.len * 0.24, d.y + d.len);
+        }
+        ctx.stroke();
+
+        if (game.lightningAlpha > 0) {
+          ctx.fillStyle = `rgba(224, 242, 254, ${game.lightningAlpha})`;
+          ctx.fillRect(0, 0, W, H);
+        }
+        ctx.restore();
+      }
+
+      function roundRectPath(c, x, y, w, h, r) {
+        c.beginPath();
+        c.moveTo(x + r, y);
+        c.lineTo(x + w - r, y);
+        c.quadraticCurveTo(x + w, y, x + w, y + r);
+        c.lineTo(x + w, y + h - r);
+        c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        c.lineTo(x + r, y + h);
+        c.quadraticCurveTo(x, y + h, x, y + h - r);
+        c.lineTo(x, y + r);
+        c.quadraticCurveTo(x, y, x + r, y);
+        c.closePath();
+      }
+
+      /* ==========================================================
+         14. HUD 儀表板即時更新（連結折角儀、雷達、停靠檢核）
+         ========================================================== */
+      function formatTime(totalSec) {
+        const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+        const s = String(Math.floor(totalSec % 60)).padStart(2, '0');
+        return `${m}:${s}`;
+      }
+
+      function updateHUD() {
+        const t = game.truck;
+
+        // 計時與車況
+        dom.hudTimer.textContent = game.level.isFreeRoam ? '∞' : formatTime(game.elapsed);
+        dom.hudIntegrityText.textContent = `${game.integrity}%`;
+        dom.hudIntegrityBar.style.width = `${game.integrity}%`;
+        dom.hudIntegrityBar.className = `h-full transition-all duration-150 ${
+          game.integrity > 70 ? 'bg-emerald-500' : game.integrity > 35 ? 'bg-amber-400' : 'bg-rose-500'
+        }`;
+        dom.hudIntegrityText.className = `font-mono-hud font-bold ${
+          game.integrity > 70 ? 'text-emerald-400' : game.integrity > 35 ? 'text-amber-400' : 'text-rose-400'
+        }`;
+
+        // 方向盤視覺旋轉（放大比例讓操作更有感）
+        const wheelVisualDeg = (t.steer / TRUCK_CFG.maxSteer) * 320;
+        dom.steeringWheelVisual.style.transform = `rotate(${wheelVisualDeg}deg)`;
+
+        // 速度與檔位
+        const kmh = Math.round(Math.abs(t.v) * 0.24);
+        dom.hudSpeed.textContent = kmh;
+        dom.hudGearBadge.textContent = t.gear;
+        dom.hudGearBadge.className = `px-1.5 py-0.5 rounded border font-mono-hud text-xs font-black ${
+          t.gear === 'R'
+            ? 'bg-rose-500/25 border-rose-400/60 text-rose-300'
+            : t.gear === 'N'
+              ? 'bg-slate-600/35 border-slate-400/50 text-slate-200'
+              : 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
+        }`;
+        dom.hudParkBadge.classList.toggle('hidden', !t.handbrake);
+        dom.btnHandbrake.classList.toggle('brake-active', t.handbrake);
+
+        // 連結折角儀 (Hitch Angle Gauge)
+        const hitchRad = normalizeAngle(t.angle - t.trlAngle);
+        const hitchDeg = Math.round(hitchRad * 180 / Math.PI);
+        const absDeg = Math.abs(hitchDeg);
+        dom.hudHitchDeg.textContent = `${hitchDeg > 0 ? '+' : ''}${hitchDeg}°`;
+
+        if (absDeg >= 72) {
+          dom.hudHitchDeg.className = 'font-mono-hud text-base sm:text-lg font-extrabold text-rose-400 leading-tight mt-0.5';
+          dom.hudHitchStatus.textContent = '折甘蔗危險!';
+          dom.hudHitchStatus.className = 'text-[10px] font-black text-rose-400';
+          dom.jackknifeAlert.classList.remove('hidden');
+        } else if (absDeg >= 55) {
+          dom.hudHitchDeg.className = 'font-mono-hud text-base sm:text-lg font-extrabold text-amber-400 leading-tight mt-0.5';
+          dom.hudHitchStatus.textContent = '角度偏大';
+          dom.hudHitchStatus.className = 'text-[10px] font-bold text-amber-400';
+          dom.jackknifeAlert.classList.add('hidden');
+        } else {
+          dom.hudHitchDeg.className = 'font-mono-hud text-base sm:text-lg font-extrabold text-emerald-400 leading-tight mt-0.5';
+          dom.hudHitchStatus.textContent = '正常';
+          dom.hudHitchStatus.className = 'text-[10px] font-bold text-emerald-400/90';
+          dom.jackknifeAlert.classList.add('hidden');
+        }
+        drawHitchGaugeMini(hitchRad, absDeg);
+
+        // 倒車雷達條更新
+        const distM = (game.radarDist / PIXELS_PER_METER).toFixed(1);
+        const showRadar = game.radarDist < 165;
+        dom.hudRadarDist.textContent = showRadar ? `${distM} m` : '安全';
+        const level = !showRadar ? 0 : game.radarDist < 36 ? 4 : game.radarDist < 72 ? 3 : game.radarDist < 115 ? 2 : 1;
+        dom.radarBars.forEach((bar, idx) => {
+          const active = idx < level;
+          if (!active) {
+            bar.style.backgroundColor = '#334155';
+          } else {
+            bar.style.backgroundColor = level >= 4 ? '#ef4444' : level === 3 ? '#f97316' : '#f59e0b';
+          }
+        });
+
+        // 即時停靠檢核清單
+        if (game.dock.activeBay) {
+          dom.dockChecklist.classList.remove('hidden');
+          dom.dockPrecisionBadge.textContent = `對準度 ${game.dock.precision}%`;
+          setCheckRow(dom.chkInBay, game.dock.inBay);
+          setCheckRow(dom.chkAligned, game.dock.aligned);
+          setCheckRow(dom.chkStopped, game.dock.stopped);
+
+          const holding = game.dock.inBay && game.dock.aligned && game.dock.stopped;
+          dom.dockHoldWrap.classList.toggle('hidden', !holding);
+          dom.dockHoldBar.style.width = `${clamp((game.dock.holdTimer / 0.8) * 100, 0, 100)}%`;
+        } else {
+          dom.dockChecklist.classList.add('hidden');
+        }
+      }
+
+      function setCheckRow(el, ok) {
+        const icon = el.querySelector('.chk-icon');
+        if (ok) {
+          el.className = 'flex items-center gap-2 text-emerald-300 font-bold';
+          icon.className = 'chk-icon w-4 h-4 rounded-full bg-emerald-500 text-slate-950 font-black flex items-center justify-center text-[10px]';
+          icon.textContent = '✓';
+        } else {
+          el.className = 'flex items-center gap-2 text-slate-400';
+          icon.className = 'chk-icon w-4 h-4 rounded-full bg-slate-700 text-slate-400 flex items-center justify-center text-[10px]';
+          icon.textContent = '○';
+        }
+      }
+
+      // 繪製連結折角儀微型頂視車身圖示
+      function drawHitchGaugeMini(hitchRad, absDeg) {
+        const w = hitchCanvas.width;
+        const h = hitchCanvas.height;
+        hitchCtx.clearRect(0, 0, w, h);
+
+        const cx = w * 0.5;
+        const cy = h * 0.42;
+
+        // 角度扇形刻度線
+        hitchCtx.strokeStyle = 'rgba(148,163,184,0.22)';
+        hitchCtx.lineWidth = 1;
+        hitchCtx.beginPath();
+        hitchCtx.arc(cx, cy, 18, -Math.PI, 0);
+        hitchCtx.stroke();
+
+        // 下方貨櫃（固定朝上參考）
+        hitchCtx.fillStyle = '#64748b';
+        hitchCtx.fillRect(cx - 6, cy, 12, 26);
+
+        // 上方旋轉的曳引車頭
+        hitchCtx.save();
+        hitchCtx.translate(cx, cy);
+        hitchCtx.rotate(hitchRad);
+        hitchCtx.fillStyle = absDeg >= 72 ? '#ef4444' : absDeg >= 55 ? '#f59e0b' : '#10b981';
+        hitchCtx.fillRect(-6, -18, 12, 18);
+        hitchCtx.fillStyle = '#0f172a';
+        hitchCtx.fillRect(-4, -15, 8, 4);
+        hitchCtx.restore();
+
+        // 第五輪樞軸點
+        hitchCtx.fillStyle = '#f8fafc';
+        hitchCtx.beginPath();
+        hitchCtx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+        hitchCtx.fill();
+      }
+
+      /* ==========================================================
+         15. 選單與車庫塗裝介面渲染
+         ========================================================== */
+      function renderMenu() {
+        dom.menuMoney.textContent = saveData.money.toLocaleString();
+        const totalStars = Object.values(saveData.stars).reduce((a, b) => a + b, 0);
+        dom.menuStars.textContent = totalStars;
+
+        // 排序：1~8 關在前，自由練習場放最後當作特別卡片
+        const ordered = [...LEVELS.filter(l => !l.isFreeRoam), ...LEVELS.filter(l => l.isFreeRoam)];
+
+        dom.levelGrid.innerHTML = ordered.map(lvl => {
+          const earned = saveData.stars[lvl.id] || 0;
+          const best = saveData.bestTime[lvl.id];
+          const starsHtml = lvl.isFreeRoam
+            ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-bold">無限練習</span>'
+            : [1, 2, 3].map(i => `<span class="${i <= earned ? 'text-amber-400' : 'text-slate-600'} text-base">★</span>`).join('');
+
+          return `
+            <button
+              type="button"
+              data-level-id="${lvl.id}"
+              class="level-card text-left hud-glass hover:border-amber-400/75 rounded-2xl p-3.5 transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.99] flex flex-col justify-between gap-2.5 ${lvl.isFreeRoam ? 'border-emerald-400/45 bg-emerald-950/30' : ''}"
+            >
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <div class="flex items-center gap-1.5">
+                    <span class="px-2 py-0.5 rounded-md text-[11px] font-black font-mono-hud ${lvl.isFreeRoam ? 'bg-emerald-400 text-slate-950' : 'bg-amber-400 text-slate-950'}">${lvl.code}</span>
+                    <span class="text-[11px] font-bold text-slate-300">${lvl.weatherLabel}</span>
+                  </div>
+                  <div class="flex items-center gap-0.5">${starsHtml}</div>
+                </div>
+                <h3 class="text-base font-black text-white">${lvl.name}</h3>
+                <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">${lvl.subtitle}</p>
+              </div>
+              <div class="flex items-center justify-between pt-2 border-t border-slate-700/60 text-[11px]">
+                <span class="text-amber-300/90 font-bold">${lvl.difficulty}</span>
+                <span class="font-mono-hud text-slate-400">
+                  ${lvl.isFreeRoam ? '點擊進入 ➔' : (best ? `最佳 ${formatTime(best)}` : `報酬 NT$ ${lvl.baseReward.toLocaleString()}`)}
+                </span>
+              </div>
+            </button>
+          `;
+        }).join('');
+
+        dom.levelGrid.querySelectorAll('.level-card').forEach(btn => {
+          btn.addEventListener('click', () => {
+            SoundFX.init();
+            startLevel(Number(btn.dataset.levelId));
+          });
+        });
+      }
+
+      function renderGarage() {
+        dom.garageMoney.textContent = saveData.money.toLocaleString();
+        dom.liveryGrid.innerHTML = LIVERIES.map(l => {
+          const owned = saveData.unlockedLiveries.includes(l.id);
+          const equipped = saveData.selectedLivery === l.id;
+
+          let actionBtn = '';
+          if (equipped) {
+            actionBtn = `<span class="px-3 py-1.5 rounded-lg bg-emerald-500/25 border border-emerald-400/60 text-emerald-300 text-xs font-black">✓ 使用中</span>`;
+          } else if (owned) {
+            actionBtn = `<button type="button" data-livery-action="equip" data-livery-id="${l.id}" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition">套用塗裝</button>`;
+          } else {
+            const canAfford = saveData.money >= l.price;
+            actionBtn = `<button type="button" data-livery-action="buy" data-livery-id="${l.id}" class="px-3 py-1.5 rounded-lg text-xs font-black transition ${canAfford ? 'bg-amber-400 hover:bg-amber-300 text-slate-950' : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'}">解鎖 NT$ ${l.price.toLocaleString()}</button>`;
+          }
+
+          return `
+            <div class="rounded-2xl bg-slate-900/90 border ${equipped ? 'border-emerald-400' : 'border-slate-700'} p-3.5 flex flex-col justify-between gap-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-sm font-black text-white">${l.name}</div>
+                  <div class="text-[11px] text-slate-400">${l.tag}</div>
+                </div>
+                ${actionBtn}
+              </div>
+              <!-- 簡易聯結車塗裝預覽圖示 -->
+              <div class="h-14 rounded-xl bg-slate-800/90 border border-slate-700/80 flex items-center justify-center gap-1.5 px-3">
+                <div class="h-8 flex-1 rounded flex items-center justify-center text-[11px] font-black font-mono-hud border-y-2" style="background:${l.trailerColor}; border-color:${l.trailerStripe}; color:${l.brandColor};">
+                  ${l.brand}
+                </div>
+                <div class="w-1.5 h-2 bg-slate-500 rounded-sm"></div>
+                <div class="w-11 h-8 rounded-r-lg rounded-l-sm relative overflow-hidden border border-slate-900" style="background:${l.cabPrimary};">
+                  <div class="absolute inset-y-0 left-1 w-2" style="background:${l.cabAccent};"></div>
+                  <div class="absolute right-1 top-1.5 bottom-1.5 w-2.5 rounded-sm bg-slate-900"></div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        dom.liveryGrid.querySelectorAll('[data-livery-action]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            SoundFX.init();
+            const id = btn.dataset.liveryId;
+            const action = btn.dataset.liveryAction;
+            const liv = LIVERIES.find(x => x.id === id);
+            if (!liv) return;
+
+            if (action === 'buy') {
+              if (saveData.money < liv.price) {
+                showToast(`資金不足！還差 NT$ ${(liv.price - saveData.money).toLocaleString()}`, 'warn');
+                return;
+              }
+              saveData.money -= liv.price;
+              saveData.unlockedLiveries.push(liv.id);
+              saveData.selectedLivery = liv.id;
+              persistSave();
+              SoundFX.playVictory();
+              showToast(`🎉 已解鎖並套用「${liv.name}」！`, 'success');
+              renderGarage();
+              renderMenu();
+            } else if (action === 'equip') {
+              saveData.selectedLivery = liv.id;
+              persistSave();
+              SoundFX.playAirBrake();
+              showToast(`已切換塗裝為「${liv.name}」`, 'info');
+              renderGarage();
+            }
+          });
+        });
+      }
+
+      /* ==========================================================
+         16. 控制項同步與事件綁定（鍵盤＋觸控＋互動方向盤）
+         ========================================================== */
+      function syncControlModeUI() {
+        const isSim = saveData.controlMode === 'sim';
+        dom.btnControlMode.textContent = isSim ? '擬真排檔' : '簡便模式';
+        dom.gearShifterBox.classList.toggle('hidden', !isSim);
+        dom.gearShifterBox.classList.toggle('flex', isSim);
+        dom.labelGas.textContent = isSim ? '油門' : '前進';
+        dom.labelBrake.textContent = isSim ? '煞車' : '倒車';
+      }
+
+      function syncAssistUI() {
+        if (saveData.assistLines) {
+          dom.btnAssist.textContent = '輔助線:開';
+          dom.btnAssist.className = 'px-2 py-1.5 rounded-lg text-[11px] font-bold border transition active:scale-95 bg-emerald-500/20 border-emerald-400/50 text-emerald-300';
+        } else {
+          dom.btnAssist.textContent = '硬派+20%';
+          dom.btnAssist.className = 'px-2 py-1.5 rounded-lg text-[11px] font-bold border transition active:scale-95 bg-amber-500/25 border-amber-400 text-amber-300';
+        }
+      }
+
+      function syncLightsUI() {
+        const on = game.truck.headlights;
+        dom.btnLights.className = `px-2 py-1.5 rounded-lg text-[11px] font-bold border transition active:scale-95 ${
+          on ? 'bg-amber-400/25 border-amber-300 text-amber-200' : 'border-slate-600 bg-slate-800/90 text-slate-400'
+        }`;
+      }
+
+      function syncCameraUI() {
+        dom.btnCamera.className = `px-2 py-1.5 rounded-lg text-[11px] font-bold border transition active:scale-95 ${
+          game.cam.overview ? 'bg-sky-500/30 border-sky-300 text-sky-200' : 'border-slate-600 bg-slate-800/90 text-slate-200'
+        }`;
+      }
+
+      function syncMuteUI() {
+        dom.btnMute.textContent = saveData.muted ? '🔇' : '🔊';
+      }
+
+      function syncGearUI() {
+        dom.gearBtns.forEach(b => {
+          const active = b.dataset.gear === game.truck.gear;
+          if (active) {
+            b.className = `gear-btn w-10 h-8 rounded-lg font-mono-hud text-xs font-black transition ${
+              b.dataset.gear === 'R' ? 'bg-rose-500 text-white' : b.dataset.gear === 'D' ? 'bg-emerald-500 text-slate-950' : 'bg-amber-400 text-slate-950'
+            }`;
+          } else {
+            b.className = 'gear-btn w-10 h-8 rounded-lg font-mono-hud text-xs font-black transition bg-slate-800 text-slate-400 hover:bg-slate-700';
+          }
+        });
+      }
+
+      function shiftGear(dir) {
+        const order = ['R', 'N', 'D'];
+        const idx = order.indexOf(game.truck.gear);
+        const nextIdx = clamp(idx + dir, 0, 2);
+        if (nextIdx !== idx) {
+          game.truck.gear = order[nextIdx];
+          SoundFX.playAirBrake();
+          syncGearUI();
+          showToast(`已切換至 ${game.truck.gear} 檔`, 'info');
+        }
+      }
+
+      function toggleHandbrake() {
+        game.truck.handbrake = !game.truck.handbrake;
+        SoundFX.playAirBrake();
+      }
+
+      function bindHoldButton(el, onDown, onUp, activeClass) {
+        const start = (e) => {
+          e.preventDefault();
+          SoundFX.init();
+          if (activeClass) el.classList.add(activeClass);
+          el.classList.add('pressed');
+          onDown();
+        };
+        const end = (e) => {
+          if (e) e.preventDefault();
+          if (activeClass) el.classList.remove(activeClass);
+          el.classList.remove('pressed');
+          onUp();
+        };
+        el.addEventListener('pointerdown', start);
+        el.addEventListener('pointerup', end);
+        el.addEventListener('pointercancel', end);
+        el.addEventListener('pointerleave', end);
+      }
+
+      function bindEvents() {
+        // 鍵盤控制
+        window.addEventListener('keydown', (e) => {
+          if (game.screen !== 'playing') return;
+          SoundFX.init();
+          const k = e.key.toLowerCase();
+
+          if (k === 'w' || e.key === 'ArrowUp') { e.preventDefault(); game.input.up = true; }
+          if (k === 's' || e.key === 'ArrowDown') { e.preventDefault(); game.input.down = true; }
+          if (k === 'a' || e.key === 'ArrowLeft') { e.preventDefault(); game.input.left = true; }
+          if (k === 'd' || e.key === 'ArrowRight') { e.preventDefault(); game.input.right = true; }
+
+          if (e.code === 'Space' && !e.repeat) {
+            e.preventDefault();
+            toggleHandbrake();
+          }
+          if (k === 'h' && !e.repeat) {
+            game.input.horn = true;
+            SoundFX.startHorn();
+          }
+          if (k === 'l' && !e.repeat) {
+            game.truck.headlights = !game.truck.headlights;
+            syncLightsUI();
+          }
+          if (k === 'c' && !e.repeat) {
+            game.cam.overview = !game.cam.overview;
+            syncCameraUI();
+          }
+          if (k === 'g' && !e.repeat) {
+            saveData.assistLines = !saveData.assistLines;
+            persistSave();
+            syncAssistUI();
+            showToast(saveData.assistLines ? '倒車輔助線：開啟' : '硬派模式啟動！無輔助線過關享 +20% 獎金', 'info');
+          }
+          if (k === 'r' && !e.repeat) {
+            startLevel(game.level.id);
+          }
+          if (saveData.controlMode === 'sim' && !e.repeat) {
+            if (k === 'q') shiftGear(-1);
+            if (k === 'e') shiftGear(1);
+          }
+        });
+
+        window.addEventListener('keyup', (e) => {
+          const k = e.key.toLowerCase();
+          if (k === 'w' || e.key === 'ArrowUp') game.input.up = false;
+          if (k === 's' || e.key === 'ArrowDown') game.input.down = false;
+          if (k === 'a' || e.key === 'ArrowLeft') game.input.left = false;
+          if (k === 'd' || e.key === 'ArrowRight') game.input.right = false;
+          if (k === 'h') {
+            game.input.horn = false;
+            SoundFX.stopHorn();
+          }
+        });
+
+        // 互動可旋轉方向盤拖曳控制（滑鼠與手指皆支援）
+        let wheelStartAngle = 0;
+        let wheelAccum = 0;
+        let wheelPointerId = null;
+
+        function getAngleFromWheelCenter(clientX, clientY) {
+          const rect = dom.wheelZone.getBoundingClientRect();
+          return Math.atan2(clientY - (rect.top + rect.height * 0.5), clientX - (rect.left + rect.width * 0.5));
+        }
+
+        dom.wheelZone.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          SoundFX.init();
+          wheelPointerId = e.pointerId;
+          try { dom.wheelZone.setPointerCapture(e.pointerId); } catch (_) {}
+          wheelStartAngle = getAngleFromWheelCenter(e.clientX, e.clientY);
+          wheelAccum = (game.truck.steer / TRUCK_CFG.maxSteer) * 2.2;
+          game.input.wheelDragging = true;
+          game.input.wheelTargetSteer = game.truck.steer;
+        });
+
+        dom.wheelZone.addEventListener('pointermove', (e) => {
+          if (!game.input.wheelDragging || e.pointerId !== wheelPointerId) return;
+          e.preventDefault();
+          const ang = getAngleFromWheelCenter(e.clientX, e.clientY);
+          const delta = normalizeAngle(ang - wheelStartAngle);
+          wheelStartAngle = ang;
+          wheelAccum = clamp(wheelAccum + delta, -2.2, 2.2);
+          game.input.wheelTargetSteer = (wheelAccum / 2.2) * TRUCK_CFG.maxSteer;
+        });
+
+        const releaseWheel = (e) => {
+          if (e.pointerId !== wheelPointerId) return;
+          game.input.wheelDragging = false;
+          wheelPointerId = null;
+        };
+        dom.wheelZone.addEventListener('pointerup', releaseWheel);
+        dom.wheelZone.addEventListener('pointercancel', releaseWheel);
+
+        // 觸控踏板、左右微調鍵、氣壓喇叭、手煞車
+        bindHoldButton(dom.btnGas, () => { game.input.up = true; }, () => { game.input.up = false; }, 'gas-active');
+        bindHoldButton(dom.btnBrake, () => { game.input.down = true; }, () => { game.input.down = false; }, 'brake-active');
+        bindHoldButton(dom.btnSteerLeft, () => { game.input.left = true; }, () => { game.input.left = false; });
+        bindHoldButton(dom.btnSteerRight, () => { game.input.right = true; }, () => { game.input.right = false; });
+        bindHoldButton(dom.btnHorn, () => { SoundFX.startHorn(); }, () => { SoundFX.stopHorn(); });
+
+        dom.btnHandbrake.addEventListener('click', () => {
+          SoundFX.init();
+          toggleHandbrake();
+        });
+
+        // 擬真排檔按鈕
+        dom.gearBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            SoundFX.init();
+            game.truck.gear = btn.dataset.gear;
+            SoundFX.playAirBrake();
+            syncGearUI();
+          });
+        });
+
+        // HUD 工具列按鈕
+        dom.btnMenu.addEventListener('click', () => {
+          game.screen = 'menu';
+          SoundFX.stopHorn();
+          dom.hudLayer.classList.add('hidden');
+          dom.hudLayer.classList.remove('flex');
+          dom.menuOverlay.classList.remove('hidden');
+          renderMenu();
+        });
+
+        dom.btnControlMode.addEventListener('click', () => {
+          SoundFX.init();
+          saveData.controlMode = saveData.controlMode === 'auto' ? 'sim' : 'auto';
+          if (saveData.controlMode === 'sim') game.truck.gear = 'D';
+          persistSave();
+          syncControlModeUI();
+          syncGearUI();
+          showToast(saveData.controlMode === 'sim' ? '已切換：擬真排檔模式 (R/N/D)' : '已切換：簡便駕駛模式', 'info');
+        });
+
+        dom.btnAssist.addEventListener('click', () => {
+          saveData.assistLines = !saveData.assistLines;
+          persistSave();
+          syncAssistUI();
+          showToast(saveData.assistLines ? '倒車輔助線：開啟' : '硬派模式！關閉輔助線過關享 +20% 運費', 'info');
+        });
+
+        dom.btnLights.addEventListener('click', () => {
+          game.truck.headlights = !game.truck.headlights;
+          syncLightsUI();
+        });
+
+        dom.btnCamera.addEventListener('click', () => {
+          game.cam.overview = !game.cam.overview;
+          syncCameraUI();
+        });
+
+        dom.btnTrailerToggle.addEventListener('click', () => {
+          if (!game.level.isFreeRoam) return;
+          game.freeRoamLong = !game.freeRoamLong;
+          startLevel(0);
+          showToast(game.freeRoamLong ? '已更換為：超長 40 呎貨櫃！' : '已更換為：標準 30 呎貨櫃', 'info');
+        });
+
+        dom.btnRestart.addEventListener('click', () => {
+          SoundFX.init();
+          startLevel(game.level.id);
+        });
+
+        dom.btnMute.addEventListener('click', () => {
+          saveData.muted = !saveData.muted;
+          persistSave();
+          syncMuteUI();
+          if (saveData.muted) SoundFX.stopHorn();
+        });
+
+        // 車庫、教學與結算 Modal 按鈕
+        document.getElementById('btnOpenGarage').addEventListener('click', () => {
+          SoundFX.init();
+          renderGarage();
+          dom.garageModal.classList.remove('hidden');
+          dom.garageModal.classList.add('flex');
+        });
+
+        document.getElementById('btnCloseGarage').addEventListener('click', () => {
+          dom.garageModal.classList.add('hidden');
+          dom.garageModal.classList.remove('flex');
+        });
+
+        document.getElementById('btnCloseTutorial').addEventListener('click', () => {
+          SoundFX.init();
+          dom.tutorialModal.classList.add('hidden');
+          dom.tutorialModal.classList.remove('flex');
+        });
+
+        dom.btnResultRetry.addEventListener('click', () => startLevel(game.level.id));
+        dom.btnResultNext.addEventListener('click', () => startLevel(game.level.id + 1));
+        dom.btnResultMenu.addEventListener('click', () => {
+          dom.resultModal.classList.add('hidden');
+          dom.resultModal.classList.remove('flex');
+          dom.hudLayer.classList.add('hidden');
+          dom.hudLayer.classList.remove('flex');
+          dom.menuOverlay.classList.remove('hidden');
+          game.screen = 'menu';
+          renderMenu();
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+      }
+
+      /* ==========================================================
+         17. 響應式畫布尺寸與主遊戲迴圈 (60 FPS)
+         ========================================================== */
+      function resizeCanvas() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.floor(window.innerWidth * dpr);
+        canvas.height = Math.floor(window.innerHeight * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      let lastTime = 0;
+      function gameLoop(nowMs) {
+        const dt = Math.min(0.05, (nowMs - (lastTime || nowMs)) / 1000);
+        lastTime = nowMs;
+
+        if (game.screen === 'playing') {
+          if (!game.level.isFreeRoam) {
+            game.elapsed += dt;
+          }
+          updatePhysics(dt);
+          updateCamera(dt);
+          renderScene(nowMs);
+          updateHUD();
+        } else {
+          // 選單背景靜態/緩慢渲染當前場地
+          SoundFX.update(dt, false, 0, false, false, 999);
+          renderScene(nowMs);
+        }
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      /* ==========================================================
+         18. 應用程式初始化
+         ========================================================== */
+      function boot() {
+        loadSave();
+        resizeCanvas();
+        buildAsphaltPattern();
+        bindEvents();
+        renderMenu();
+        // 預先初始化第 1 關作為選單背後實景
+        game.level = LEVELS[0];
+        game.truck.x = LEVELS[0].spawn.x;
+        game.truck.y = LEVELS[0].spawn.y;
+        game.truck.angle = LEVELS[0].spawn.angle;
+        game.truck.trlAngle = LEVELS[0].spawn.angle;
+        game.cam.x = LEVELS[0].spawn.x - 180;
+        game.cam.y = LEVELS[0].spawn.y;
+        game.cam.zoom = 0.85;
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      window.addEventListener('DOMContentLoaded', boot);
+    })();
+  </script>
 </body>
 </html>
