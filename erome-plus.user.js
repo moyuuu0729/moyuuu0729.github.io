@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Erome 全能增強：去廣告 / 黑名單 / 點選隱藏 / 作者追片 / 完整備份 / 抖音模式
 // @namespace    https://www.erome.com/
-// @version      4.1.1
+// @version      4.1.2
 // @description  去廣告、視覺化點選隱藏、作者與關鍵字黑名單、隱藏 Suggested users、略過 18+、豎屏過濾、列表指定開刷、網站底部無限滾動、點擊 @作者名 快速追片、全設定一鍵 JSON 備份還原與抖音滑動播放器
 // @author       MingTW0729
 // @match        https://www.erome.com/*
