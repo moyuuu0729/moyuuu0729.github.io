@@ -212,6 +212,38 @@
             vertical-align: middle;
         }
 
+        .missav-pl-title-skip-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 4px !important;
+            margin-left: 8px !important;
+            padding: 2px 9px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            line-height: 1.4 !important;
+            color: #e4e4e7 !important;
+            background: rgba(63, 63, 70, 0.92) !important;
+            border: 1px solid rgba(255, 255, 255, 0.24) !important;
+            border-radius: 4px !important;
+            vertical-align: middle !important;
+            cursor: pointer !important;
+            transition: background 0.15s ease, color 0.15s ease !important;
+        }
+        .missav-pl-title-skip-btn:hover {
+            background: #e11d48 !important;
+            border-color: #fda4af !important;
+            color: #ffffff !important;
+        }
+        .missav-pl-title-skip-btn.is-skipped {
+            background: #d97706 !important;
+            border-color: rgba(255, 255, 255, 0.32) !important;
+            color: #ffffff !important;
+        }
+        .missav-pl-title-skip-btn.is-skipped:hover {
+            background: #10b981 !important;
+            border-color: #a7f3d0 !important;
+        }
+
         /* 封面快速「略過 / 還原」懸浮小按鈕 */
         .missav-pl-skip-btn {
             position: absolute !important;
@@ -2810,7 +2842,7 @@
 
     function markPageVideos(forceRefresh = false) {
         if (forceRefresh) {
-            document.querySelectorAll('.missav-pl-badge-group, .missav-pl-title-badge, .missav-pl-skip-btn').forEach(el => el.remove());
+            document.querySelectorAll('.missav-pl-badge-group, .missav-pl-title-badge, .missav-pl-title-skip-btn, .missav-pl-skip-btn').forEach(el => el.remove());
             document.querySelectorAll('.missav-pl-matched-box').forEach(el => {
                 el.classList.remove('missav-pl-matched-box');
                 el.style.removeProperty('--missav-pl-color');
@@ -2946,21 +2978,35 @@
             const matchedPlaylists = codeToPlaylists.get(pageCode) || [];
             const isSkipped = skippedCodes.has(pageCode);
             const h1 = document.querySelector('h1');
-            if (h1 && !h1.querySelector('.missav-pl-title-badge') && (matchedPlaylists.length > 0 || isSkipped)) {
-                matchedPlaylists.forEach(pl => {
-                    const titleBadge = document.createElement('span');
-                    titleBadge.className = 'missav-pl-title-badge';
-                    titleBadge.style.backgroundColor = pl.color || '#10b981';
-                    titleBadge.textContent = `★ ${pl.name}`;
-                    h1.appendChild(titleBadge);
-                });
-                if (isSkipped) {
-                    const skipTitleBadge = document.createElement('span');
-                    skipTitleBadge.className = 'missav-pl-title-badge';
-                    skipTitleBadge.style.backgroundColor = '#52525b';
-                    skipTitleBadge.textContent = '🚫 已略過';
-                    h1.appendChild(skipTitleBadge);
+            if (h1) {
+                if (!h1.querySelector('.missav-pl-title-badge') && matchedPlaylists.length > 0) {
+                    matchedPlaylists.forEach(pl => {
+                        const titleBadge = document.createElement('span');
+                        titleBadge.className = 'missav-pl-title-badge';
+                        titleBadge.style.backgroundColor = pl.color || '#10b981';
+                        titleBadge.textContent = `★ ${pl.name}`;
+                        h1.appendChild(titleBadge);
+                    });
                 }
+
+                // 確保「加入已略過」按鈕永遠位於標題與所有片單標籤（如 ★ 主片單）的最右邊
+                let titleSkipBtn = h1.querySelector('.missav-pl-title-skip-btn');
+                if (!titleSkipBtn) {
+                    titleSkipBtn = document.createElement('button');
+                    titleSkipBtn.type = 'button';
+                    titleSkipBtn.className = 'missav-pl-title-skip-btn';
+                    titleSkipBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleToggleSkip(pageCode);
+                    });
+                }
+                titleSkipBtn.classList.toggle('is-skipped', isSkipped);
+                titleSkipBtn.textContent = isSkipped ? '🚫 已略過（點擊還原）' : '🚫 加入已略過';
+                titleSkipBtn.title = isSkipped
+                    ? `目前已加入「已略過」，點擊將 ${pageCode} 移出還原`
+                    : `點擊將 ${pageCode} 加入本機「已略過」清單`;
+                h1.appendChild(titleSkipBtn);
             }
         }
 
@@ -2987,10 +3033,7 @@
         widget.innerHTML = `
             <div class="missav-pl-note-head">
                 <span class="missav-pl-note-title">📝 時間點書籤與簡短筆記（${escapeHtml(pageCode)}）</span>
-                <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <span id="missav-pl-note-updated" style="font-size:11px;color:#a1a1aa;"></span>
-                    <button type="button" id="missav-pl-widget-skip" class="missav-pl-note-btn"></button>
-                </div>
+                <span id="missav-pl-note-updated" style="font-size:11px;color:#a1a1aa;"></span>
             </div>
             <div class="missav-pl-bm-list" id="missav-pl-bm-list"></div>
             <div class="missav-pl-note-row">
@@ -3051,22 +3094,6 @@
 
         const bmListEl = widget.querySelector('#missav-pl-bm-list');
         const updatedEl = widget.querySelector('#missav-pl-note-updated');
-
-        const widgetSkipBtn = widget.querySelector('#missav-pl-widget-skip');
-        const syncWidgetSkipBtn = () => {
-            if (!widgetSkipBtn) return;
-            const skipped = skippedCodes.has(pageCode);
-            widgetSkipBtn.textContent = skipped ? '↩ 移出已略過' : '🚫 加入已略過';
-            widgetSkipBtn.style.setProperty('background', skipped ? '#d97706' : '#3f3f46', 'important');
-        };
-        syncWidgetSkipBtn();
-        if (widgetSkipBtn) {
-            widgetSkipBtn.addEventListener('click', () => {
-                handleToggleSkip(pageCode);
-                syncWidgetSkipBtn();
-            });
-        }
-
         const timeInput = widget.querySelector('#missav-pl-bm-time');
         const labelInput = widget.querySelector('#missav-pl-bm-label');
         const noteTextEl = widget.querySelector('#missav-pl-note-text');
