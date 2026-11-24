@@ -5766,6 +5766,7 @@
         });
 
         feedOpen = true;
+        startFeedClock();
         overlay.classList.add('open');
         document.documentElement.classList.add('ef-feed-open');
         document.body.classList.add('ef-feed-open');
@@ -5779,6 +5780,7 @@
     }
 
     function closeFeedMode() {
+        stopFeedClock();
         closeGridDrawer();
         feedOpen = false;
         pendingSkipAlbumUrl = null;
@@ -6117,6 +6119,114 @@
         gridDrawerRefreshTimer = setTimeout(() => {
             if (isGridDrawerOpen()) renderGridDrawer();
         }, 250);
+    }
+
+    // ==================== 14.6 抖音模式即時現實時間 ====================
+    let feedClockStyleInjected = false;
+    let feedClockTimer = null;
+    let feedClockShowSeconds = false;
+
+    function ensureFeedClock() {
+        const overlay = document.getElementById('ef-feed-overlay');
+        if (!overlay) return null;
+
+        if (!feedClockStyleInjected) {
+            feedClockStyleInjected = true;
+            injectStyle(`
+                #ef-feed-clock {
+                    position: absolute;
+                    top: calc(56px + env(safe-area-inset-top, 0px));
+                    left: 12px;
+                    z-index: 42;
+                    padding: 3px 10px;
+                    border-radius: 999px;
+                    background: rgba(15, 15, 22, 0.58);
+                    border: 1px solid rgba(255, 255, 255, 0.16);
+                    color: rgba(255, 255, 255, 0.92);
+                    font-size: 12px;
+                    font-weight: 700;
+                    font-variant-numeric: tabular-nums;
+                    letter-spacing: 0.04em;
+                    line-height: 1.4;
+                    backdrop-filter: blur(6px);
+                    -webkit-backdrop-filter: blur(6px);
+                    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+                    cursor: pointer;
+                    user-select: none;
+                    -webkit-user-select: none;
+                    transition: top 0.2s ease, opacity 0.2s ease;
+                }
+                #ef-feed-clock:active {
+                    transform: scale(0.95);
+                }
+            `);
+        }
+
+        let clockEl = document.getElementById('ef-feed-clock');
+        if (!clockEl) {
+            clockEl = document.createElement('div');
+            clockEl.id = 'ef-feed-clock';
+            clockEl.title = '點擊切換顯示秒數';
+            clockEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                feedClockShowSeconds = !feedClockShowSeconds;
+                updateFeedClockText();
+            });
+            overlay.appendChild(clockEl);
+        }
+        return clockEl;
+    }
+
+    function updateFeedClockPosition() {
+        const overlay = document.getElementById('ef-feed-overlay');
+        const clockEl = document.getElementById('ef-feed-clock');
+        if (!overlay || !clockEl) return;
+
+        // 自動貼合頂部工具列下方避免重疊；若專注模式隱藏了頂部列，則自動上移到左上角
+        const topbar = overlay.querySelector('.ef-feed-topbar, #ef-feed-topbar, .ef-topbar');
+        if (topbar) {
+            const style = window.getComputedStyle(topbar);
+            const rect = topbar.getBoundingClientRect();
+            const overlayRect = overlay.getBoundingClientRect();
+            if (style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.height > 0) {
+                const topPx = Math.max(10, Math.round(rect.bottom - overlayRect.top + 6));
+                clockEl.style.top = `${topPx}px`;
+                return;
+            }
+        }
+        clockEl.style.top = 'calc(12px + env(safe-area-inset-top, 0px))';
+    }
+
+    function updateFeedClockText() {
+        const clockEl = ensureFeedClock();
+        if (!clockEl) return;
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        clockEl.textContent = feedClockShowSeconds ? `${hh}:${mm}:${ss}` : `${hh}:${mm}`;
+        updateFeedClockPosition();
+    }
+
+    function startFeedClock() {
+        stopFeedClock();
+        updateFeedClockText();
+        feedClockTimer = setInterval(() => {
+            if (!feedOpen) {
+                stopFeedClock();
+                return;
+            }
+            if (!document.hidden) {
+                updateFeedClockText();
+            }
+        }, 1000);
+    }
+
+    function stopFeedClock() {
+        if (feedClockTimer) {
+            clearInterval(feedClockTimer);
+            feedClockTimer = null;
+        }
     }
 
     // ==================== 15. 全設定一鍵完整備份／還原 + 收藏管理 ====================
