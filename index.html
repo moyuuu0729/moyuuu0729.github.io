@@ -632,9 +632,9 @@
                     <strong id="stat-online">1</strong>
                     <span>人</span>
                 </span>
-                <span class="stat-pill" id="pill-total" title="累計造訪本站總人數">
-                    <span>👥 總計來訪</span>
-                    <strong id="stat-total"><span id="busuanzi_value_site_uv">--</span></strong>
+                <span class="stat-pill clickable" id="pill-peak" title="歷史最高同時在線人數">
+                    <span>🏆 最高在線</span>
+                    <strong id="stat-peak">1</strong>
                     <span>人</span>
                 </span>
             </div>
@@ -1194,14 +1194,15 @@
             goToScript(0, false);
         }
 
-        // ==================== 4. 即時在線人數 & 總來訪人數模組 ====================
+        // ==================== 4. 目前在線 & 最高同時在線人數模組 ====================
         async function initVisitorStats() {
             const onlineEl = document.getElementById('stat-online');
-            const totalEl = document.getElementById('stat-total');
+            const peakEl = document.getElementById('stat-peak');
             const onlinePill = document.getElementById('pill-online');
+            const peakPill = document.getElementById('pill-peak');
             const dbUrl = (FIREBASE_DB_URL || '').trim().replace(/\/+$/, '');
 
-            // 模式 A：已填入 Firebase Realtime Database 網址 -> 全球真・即時在線人數＋精準總人數
+            // 已填入 Firebase Realtime Database 網址 -> 全球即時在線＋自動刷新歷史最高在線
             if (dbUrl) {
                 try {
                     const [{ initializeApp }, dbMod] = await Promise.all([
@@ -1216,9 +1217,17 @@
                     const connectedRef = dbMod.ref(db, '.info/connected');
                     const onlineListRef = dbMod.ref(db, 'siteStats/online');
                     const myOnlineRef = dbMod.ref(db, `siteStats/online/${sessionId}`);
-                    const totalRef = dbMod.ref(db, 'siteStats/totalVisitors');
+                    const peakRef = dbMod.ref(db, 'siteStats/peakOnline');
 
-                    // 連線成功時登記目前在線，關閉分頁或斷線自動移除
+                    let latestOnline = 1;
+                    let latestPeak = 0;
+
+                    const renderPeak = () => {
+                        const val = Math.max(1, latestPeak, latestOnline);
+                        if (peakEl) peakEl.textContent = val.toLocaleString('zh-Hant');
+                    };
+
+                    // 連線成功登記上線，關閉分頁或斷線自動移除
                     dbMod.onValue(connectedRef, (snap) => {
                         if (snap.val() === true) {
                             dbMod.onDisconnect(myOnlineRef).remove().then(() => {
@@ -1227,55 +1236,40 @@
                         }
                     });
 
-                    // 即時監聽目前在線人數
+                    // 即時監聽歷史最高同時在線人數
+                    dbMod.onValue(peakRef, (snap) => {
+                        latestPeak = Number(snap.val() || 0);
+                        renderPeak();
+                    });
+
+                    // 即時監聽目前在線人數，超過歷史紀錄時自動原子更新峰值
                     dbMod.onValue(onlineListRef, (snap) => {
                         const count = snap.exists() ? Object.keys(snap.val() || {}).length : 1;
-                        if (onlineEl) onlineEl.textContent = Number(Math.max(1, count)).toLocaleString('zh-Hant');
+                        latestOnline = Math.max(1, count);
+                        if (onlineEl) onlineEl.textContent = latestOnline.toLocaleString('zh-Hant');
+                        renderPeak();
+
+                        if (latestOnline > latestPeak) {
+                            dbMod.runTransaction(peakRef, (cur) => {
+                                const prev = Number(cur || 0);
+                                return latestOnline > prev ? latestOnline : prev;
+                            }).catch(() => {});
+                        }
                     });
 
-                    // 同瀏覽器首次造訪才累計總來訪人數（不因重整狂洗）
-                    const visitedKey = 'us_share_visited_v1';
-                    if (!localStorage.getItem(visitedKey)) {
-                        dbMod.runTransaction(totalRef, (cur) => (cur || 0) + 1)
-                            .then(() => localStorage.setItem(visitedKey, String(Date.now())))
-                            .catch(() => {});
-                    }
-
-                    // 即時監聽總來訪人數
-                    dbMod.onValue(totalRef, (snap) => {
-                        const total = Number(snap.val() || 1);
-                        if (totalEl) totalEl.textContent = total.toLocaleString('zh-Hant');
-                    });
-
-                    onlinePill.addEventListener('click', () => {
-                        showToast('🟢 已連線 Firebase 即時統計，開關分頁皆會即時增減');
-                    });
+                    const showConnectedMsg = () => showToast('🟢 已連線即時資料庫，目前在線與最高紀錄同步中');
+                    onlinePill?.addEventListener('click', showConnectedMsg);
+                    peakPill?.addEventListener('click', showConnectedMsg);
                     return;
                 } catch (err) {
-                    console.warn('Firebase 統計初始化失敗，改用備援模式：', err);
+                    console.warn('Firebase 統計初始化失敗：', err);
                 }
             }
 
-            // 模式 B：尚未設定 Firebase -> 使用免註冊 Vercount 統計總人數，並提供點擊提示
-            const script = document.createElement('script');
-            script.src = 'https://events.vercount.one/js';
-            script.defer = true;
-            document.head.appendChild(script);
-
-            // 若 5 秒後仍被阻擋器擋掉未能載入，優雅顯示本機計數避免卡在 --
-            setTimeout(() => {
-                const uvEl = document.getElementById('busuanzi_value_site_uv');
-                if (uvEl && uvEl.textContent.trim() === '--') {
-                    const localKey = 'us_share_local_visits';
-                    const nextCount = Number(localStorage.getItem(localKey) || 0) + 1;
-                    localStorage.setItem(localKey, String(nextCount));
-                    uvEl.textContent = String(nextCount);
-                }
-            }, 5000);
-
-            onlinePill.addEventListener('click', () => {
-                showToast('💡 填入免費 Firebase 資料庫網址後即可顯示全球跨裝置即時在線人數');
-            });
+            // 尚未填入 FIREBASE_DB_URL 時維持預設顯示並提示
+            const showSetupTip = () => showToast('💡 填入免費 Firebase 資料庫網址後即可同步全球在線與最高紀錄');
+            onlinePill?.addEventListener('click', showSetupTip);
+            peakPill?.addEventListener('click', showSetupTip);
         }
 
         // 左右箭頭與鍵盤快捷鍵
