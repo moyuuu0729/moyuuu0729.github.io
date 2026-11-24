@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MissAV 多片單番號比對標註工具
 // @namespace    http://tampermonkey.net/
-// @version      8.1
+// @version      8.3
 // @description  多片單獨立規則、即時監聽站內收藏自動同步、番號前綴統計排行、多版本去重、變動追蹤、隨機抽片、書籤筆記與分類紀錄
 // @match        https://missav.ws/*
 // @grant        GM_setValue
@@ -60,7 +60,8 @@
         bottomSafeOffset: 0,
         dedupEnabled: true,
         dedupPreset: 'zh_leak_orig',
-        watchNativePlaylist: true
+        watchNativePlaylist: true,
+        blockPlayerAds: true
     };
     const REQUEST_DELAY_MS = 700;       // 換頁與切換片單間隔(毫秒)，避免觸發 Cloudflare 限流
     const NATIVE_SYNC_DELAY_MS = 2500;  // 偵測到站內收藏動作後的自動同步延遲(毫秒)
@@ -96,6 +97,28 @@
     GM_addStyle(`
         :root {
             --missav-pl-dim-opacity: 0.25;
+        }
+
+        /* 播放器去廣告與隱藏外部廣告框架 */
+        html[data-missav-block-ads="true"] iframe[src*="exoclick"],
+        html[data-missav-block-ads="true"] iframe[src*="trafficjunky"],
+        html[data-missav-block-ads="true"] iframe[src*="juicyads"],
+        html[data-missav-block-ads="true"] iframe[src*="tsyndicate"],
+        html[data-missav-block-ads="true"] iframe[src*="realsrv"],
+        html[data-missav-block-ads="true"] iframe[src*="adtng"],
+        html[data-missav-block-ads="true"] iframe[src*="popads"],
+        html[data-missav-block-ads="true"] iframe[src*="onclkds"],
+        html[data-missav-block-ads="true"] .plyr__ads,
+        html[data-missav-block-ads="true"] [class*="pause-ad"],
+        html[data-missav-block-ads="true"] [id*="pause-ad"],
+        html[data-missav-block-ads="true"] ins.adsbyexoclick {
+            display: none !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+        html[data-missav-block-ads="true"] .plyr video,
+        html[data-missav-block-ads="true"] .plyr__controls {
+            pointer-events: auto !important;
         }
 
         .missav-pl-matched-box {
@@ -1523,7 +1546,8 @@
             bottomSafeOffset: !Number.isNaN(bottomOffset) && bottomOffset >= 0 && bottomOffset <= 160 ? Math.round(bottomOffset) : DEFAULT_UI_PREFS.bottomSafeOffset,
             dedupEnabled: typeof stored.dedupEnabled === 'boolean' ? stored.dedupEnabled : DEFAULT_UI_PREFS.dedupEnabled,
             dedupPreset: DEDUP_PRESETS[stored.dedupPreset] ? stored.dedupPreset : DEFAULT_UI_PREFS.dedupPreset,
-            watchNativePlaylist: typeof stored.watchNativePlaylist === 'boolean' ? stored.watchNativePlaylist : DEFAULT_UI_PREFS.watchNativePlaylist
+            watchNativePlaylist: typeof stored.watchNativePlaylist === 'boolean' ? stored.watchNativePlaylist : DEFAULT_UI_PREFS.watchNativePlaylist,
+            blockPlayerAds: typeof stored.blockPlayerAds === 'boolean' ? stored.blockPlayerAds : DEFAULT_UI_PREFS.blockPlayerAds
         };
     }
 
@@ -1539,7 +1563,8 @@
             bottomSafeOffset: !Number.isNaN(bottomOffset) && bottomOffset >= 0 && bottomOffset <= 160 ? Math.round(bottomOffset) : DEFAULT_UI_PREFS.bottomSafeOffset,
             dedupEnabled: Boolean(prefs.dedupEnabled),
             dedupPreset: DEDUP_PRESETS[prefs.dedupPreset] ? prefs.dedupPreset : DEFAULT_UI_PREFS.dedupPreset,
-            watchNativePlaylist: Boolean(prefs.watchNativePlaylist)
+            watchNativePlaylist: Boolean(prefs.watchNativePlaylist),
+            blockPlayerAds: Boolean(prefs.blockPlayerAds)
         };
         GM_setValue(UI_PREFS_KEY, uiPrefs);
         applyUiPrefs();
@@ -1547,6 +1572,7 @@
 
     function applyUiPrefs() {
         document.documentElement.dataset.missavBadgePos = uiPrefs.badgePos;
+        document.documentElement.dataset.missavBlockAds = uiPrefs.blockPlayerAds ? 'true' : 'false';
         document.documentElement.style.setProperty('--missav-pl-dim-opacity', String(uiPrefs.dimOpacity));
     }
 
@@ -3056,16 +3082,67 @@
                 jumpBtn.className = 'missav-pl-bm-jump';
                 jumpBtn.textContent = `▶ ${formatSeconds(bm.time)}${bm.label ? ` ${bm.label}` : ''}`;
                 jumpBtn.title = `點擊直接跳轉影片至 ${formatSeconds(bm.time)}`;
+                const findMainVideoPlayer = () => {
+                    const videos = [];
+                    const collectFromRoot = (root) => {
+                        if (!root || !root.querySelectorAll) return;
+                        root.querySelectorAll('video').forEach((v) => videos.push(v));
+                        root.querySelectorAll('*').forEach((el) => {
+                            if (el.shadowRoot) collectFromRoot(el.shadowRoot);
+                        });
+                    };
+
+                    collectFromRoot(document);
+                    document.querySelectorAll('iframe').forEach((ifr) => {
+                        try {
+                            if (ifr.contentDocument) collectFromRoot(ifr.contentDocument);
+                        } catch {}
+                    });
+
+                    // 檢查 Plyr 實例綁定的主媒體元素
+                    const pageWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+                    const plyrInst = document.querySelector('.plyr')?.plyr || pageWin?.player;
+                    if (plyrInst?.media && plyrInst.media.tagName === 'VIDEO' && !videos.includes(plyrInst.media)) {
+                        videos.push(plyrInst.media);
+                    }
+
+                    if (videos.length === 0) return null;
+
+                    // 依「是否已有播放進度、正在播放、片長大於 1 分鐘、畫面尺寸大」評分，排除廣告與小預覽影片
+                    let bestVideo = videos[0];
+                    let bestScore = -Infinity;
+                    videos.forEach((v) => {
+                        let score = 0;
+                        const rect = v.getBoundingClientRect();
+                        if (v.currentTime > 0) score += 120;
+                        if (!v.paused && !v.ended && v.readyState >= 2) score += 90;
+                        if (Number.isFinite(v.duration) && v.duration > 60) score += 60;
+                        if (v.currentSrc || v.src || v.querySelector('source')) score += 30;
+                        if (rect.width >= 260 && rect.height >= 140) score += 45;
+                        if (v.id === 'player' || v.closest('.plyr, [class*="player"]')) score += 35;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestVideo = v;
+                        }
+                    });
+                    return bestVideo;
+                };
+
                 jumpBtn.addEventListener('click', () => {
-                    const video = document.querySelector('video');
+                    const video = findMainVideoPlayer();
                     if (!video) {
                         showToast('⚠️ 尚未偵測到播放器，請先點開播放影片');
                         return;
                     }
                     try {
-                        video.currentTime = bm.time;
+                        const plyr = video.closest('.plyr')?.plyr;
+                        if (plyr && typeof plyr.currentTime === 'number') {
+                            plyr.currentTime = bm.time;
+                        } else {
+                            video.currentTime = bm.time;
+                        }
                         video.play?.().catch(() => {});
-                        video.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        (video.closest('.plyr') || video).scrollIntoView({ behavior: 'smooth', block: 'center' });
                         showToast(`⏩ 已跳轉至 ${formatSeconds(bm.time)}${bm.label ? `（${bm.label}）` : ''}`);
                     } catch {
                         showToast('⚠️ 跳轉失敗，請先開始播放後再試');
@@ -3092,13 +3169,49 @@
         }
 
         widget.querySelector('#missav-pl-bm-grab').addEventListener('click', () => {
-            const video = document.querySelector('video');
-            if (!video || Number.isNaN(video.currentTime)) {
-                showToast('⚠️ 請先播放影片再抓取時間');
+            const videos = [];
+            const collect = (root) => {
+                if (!root || !root.querySelectorAll) return;
+                root.querySelectorAll('video').forEach((v) => videos.push(v));
+                root.querySelectorAll('*').forEach((el) => {
+                    if (el.shadowRoot) collect(el.shadowRoot);
+                });
+            };
+            collect(document);
+            document.querySelectorAll('iframe').forEach((ifr) => {
+                try {
+                    if (ifr.contentDocument) collect(ifr.contentDocument);
+                } catch {}
+            });
+
+            const pageWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+            const plyrInst = document.querySelector('.plyr')?.plyr || pageWin?.player;
+            if (plyrInst?.media && plyrInst.media.tagName === 'VIDEO' && !videos.includes(plyrInst.media)) {
+                videos.push(plyrInst.media);
+            }
+
+            // 優先挑出 currentTime > 0 且片長最長的主影片
+            const playingOrProgressed = videos
+                .filter((v) => Number.isFinite(v.currentTime) && v.currentTime > 0)
+                .sort((a, b) => (b.duration || 0) - (a.duration || 0));
+
+            let grabbedSec = playingOrProgressed.length > 0 ? playingOrProgressed[0].currentTime : 0;
+
+            // 備援：若播放器時間被封裝，改從播放器畫面上的目前時間文字讀取
+            if (!grabbedSec) {
+                const timeDom = document.querySelector('.plyr__time--current, .vjs-current-time-display');
+                const parsed = parseTimeToSeconds((timeDom?.textContent || '').replace(/^-/, '').trim());
+                if (parsed && parsed > 0) grabbedSec = parsed;
+            }
+
+            if (!grabbedSec || Number.isNaN(grabbedSec)) {
+                showToast('⚠️ 尚未偵測到播放進度，請先按播放讓影片跑起來');
                 return;
             }
-            timeInput.value = formatSeconds(video.currentTime);
+
+            timeInput.value = formatSeconds(grabbedSec);
             labelInput.focus();
+            showToast(`⏱ 已抓取時間：${timeInput.value}`);
         });
 
         widget.querySelector('#missav-pl-bm-add').addEventListener('click', () => {
@@ -3656,6 +3769,13 @@
                         </div>
 
                         <div class="missav-pl-pref-line">
+                            <label title="移除播放器透明點擊遮罩、暫停廣告橫幅並攔截彈窗跳轉">
+                                <input type="checkbox" id="missav-pl-block-ads" ${uiPrefs.blockPlayerAds ? 'checked' : ''} />
+                                <span>🛡️ 去除播放器廣告與點擊跳轉遮罩</span>
+                            </label>
+                        </div>
+
+                        <div class="missav-pl-pref-line">
                             <label>
                                 <input type="checkbox" id="missav-pl-dedup-enable" ${uiPrefs.dedupEnabled ? 'checked' : ''} />
                                 <span>同頁多版本自動去重</span>
@@ -3733,6 +3853,7 @@
         const autoEnableEl = modal.querySelector('#missav-pl-auto-enable');
         const autoIntervalEl = modal.querySelector('#missav-pl-auto-interval');
         const watchNativeEl = modal.querySelector('#missav-pl-watch-native');
+        const blockAdsEl = modal.querySelector('#missav-pl-block-ads');
         const dedupEnableEl = modal.querySelector('#missav-pl-dedup-enable');
         const dedupPresetEl = modal.querySelector('#missav-pl-dedup-preset');
         const badgePosEl = modal.querySelector('#missav-pl-badge-pos');
@@ -3951,8 +4072,9 @@
                 bottomSafeOffset: Number(bottomOffsetEl.value) || 0,
                 dedupEnabled: dedupEnableEl.checked,
                 dedupPreset: dedupPresetEl.value,
-                watchNativePlaylist: watchNativeEl.checked
-            };
+                watchNativePlaylist: watchNativeEl.checked,
+                blockPlayerAds: blockAdsEl.checked
+         };
 
             const hasCustomRule = cleaned.some(pl => pl.action !== 'normal') || (skippedCodes.size > 0 && nextPrefs.skipAction !== 'normal');
             if (hasCustomRule && currentMode === 'normal') {
@@ -3986,6 +4108,7 @@
                 autoEnableEl.checked = autoSyncCfg.enabled;
                 autoIntervalEl.value = autoSyncCfg.intervalMin;
                 watchNativeEl.checked = uiPrefs.watchNativePlaylist;
+                blockAdsEl.checked = uiPrefs.blockPlayerAds;
                 dedupEnableEl.checked = uiPrefs.dedupEnabled;
                 dedupPresetEl.value = uiPrefs.dedupPreset;
                 badgePosEl.value = uiPrefs.badgePos;
@@ -4910,8 +5033,172 @@
         debounceTimer = setTimeout(() => {
             markPageVideos(false);
             injectVideoNoteWidget();
+            cleanPlayerAds();
         }, 300);
     });
+
+    // ================= 播放器廣告、透明遮罩與彈窗攔截 =================
+    let lastAdToastTs = 0;
+
+    function notifyAdBlocked(msg) {
+        const now = Date.now();
+        if (now - lastAdToastTs > 4000) {
+            lastAdToastTs = now;
+            showToast(msg);
+        }
+    }
+
+    function cleanPlayerAds() {
+        if (!uiPrefs.blockPlayerAds || !isVideoUrl(location.href)) return;
+
+        const plyrRoot = document.querySelector('.plyr') || document.querySelector('#player');
+        const mainVideo = plyrRoot?.querySelector('video') || document.querySelector('video');
+        if (!plyrRoot && !mainVideo) return;
+
+        // 取得包住主播放器的外層容器（排除標題與筆記區塊）
+        let wrapper = plyrRoot || mainVideo.parentElement;
+        if (wrapper && wrapper.parentElement && !wrapper.parentElement.querySelector('h1, #missav-pl-note-widget')) {
+            const pRect = wrapper.parentElement.getBoundingClientRect();
+            const vRect = wrapper.getBoundingClientRect();
+            if (pRect.height > 0 && pRect.height <= vRect.height + 120) {
+                wrapper = wrapper.parentElement;
+            }
+        }
+        if (!wrapper) return;
+
+        // 1. 移除播放器區域內的廣告 iframe 與外部廣告超連結
+        wrapper.querySelectorAll('iframe, ins, a[target="_blank"]').forEach((el) => {
+            if (el.closest('#missav-pl-panel, .missav-pl-overlay, #missav-pl-note-widget')) return;
+            if (el.tagName === 'A') {
+                const href = el.getAttribute('href') || '';
+                if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
+                    el.remove();
+                    return;
+                }
+                try {
+                    if (new URL(href, location.origin).origin !== location.origin) {
+                        el.remove();
+                    }
+                } catch {
+                    el.remove();
+                }
+            } else {
+                el.remove();
+            }
+        });
+
+        // 2. 移除蓋在播放器上方、非 Plyr 原生控制列的透明點擊遮罩與暫停廣告浮層
+        const wRect = wrapper.getBoundingClientRect();
+        wrapper.querySelectorAll('div, section, aside').forEach((el) => {
+            if (el === wrapper || el === plyrRoot) return;
+            if (el.closest('.plyr__controls, .plyr__menu, #missav-pl-panel, .missav-pl-overlay, #missav-pl-note-widget')) return;
+            if (el.querySelector('video, .plyr, .plyr__controls')) return;
+
+            const cls = String(el.className || '');
+            if (/\bplyr__(?:poster|captions|progress|volume|tooltip)\b/.test(cls)) return;
+
+            const cs = getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden') return;
+            if (cs.position !== 'absolute' && cs.position !== 'fixed') return;
+
+            const rect = el.getBoundingClientRect();
+            if (rect.width < 100 || rect.height < 60) return;
+
+            const isTransparentShield =
+                (cs.opacity === '0' || cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') &&
+                (el.textContent || '').trim() === '' &&
+                !el.querySelector('img, svg, button');
+
+            const hasExternalAdContent = Array.from(el.querySelectorAll('a[href], img[src]')).some((node) => {
+                const rawUrl = node.getAttribute('href') || node.getAttribute('src') || '';
+                if (!rawUrl || rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) return false;
+                try {
+                    return new URL(rawUrl, location.origin).origin !== location.origin;
+                } catch {
+                    return false;
+                }
+            });
+
+            const coversMostOfPlayer = wRect.width > 0 && rect.width >= wRect.width * 0.75 && rect.height >= wRect.height * 0.75;
+
+            if (isTransparentShield || hasExternalAdContent || (coversMostOfPlayer && !cls.includes('plyr__'))) {
+                el.remove();
+            }
+        });
+
+        // 3. 若出現非 blob 串流的片頭短廣告 <video>，自動靜音快轉略過
+        wrapper.querySelectorAll('video').forEach((v) => {
+            const src = v.currentSrc || v.src || '';
+            if (src && !src.startsWith('blob:') && Number.isFinite(v.duration) && v.duration > 0 && v.duration <= 45) {
+                v.muted = true;
+                if (v.currentTime < v.duration - 0.2) {
+                    v.currentTime = v.duration;
+                }
+            }
+        });
+    }
+
+    function installPlayerAdBlocker() {
+        const pageWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+
+        // 攔截點擊播放器觸發的外部廣告彈窗 (window.open)
+        if (pageWin && typeof pageWin.open === 'function' && !pageWin.__missavPlOpenHooked) {
+            const origOpen = pageWin.open.bind(pageWin);
+            pageWin.open = function (url, target, features) {
+                if (uiPrefs.blockPlayerAds) {
+                    const urlStr = String(url || '').trim();
+                    let isAdPopup = !urlStr || urlStr === 'about:blank' || urlStr.startsWith('javascript:');
+                    if (!isAdPopup) {
+                        try {
+                            isAdPopup = new URL(urlStr, location.origin).origin !== location.origin;
+                        } catch {
+                            isAdPopup = true;
+                        }
+                    }
+                    if (isAdPopup) {
+                        notifyAdBlocked('🛡️ 已攔截播放器廣告彈窗');
+                        return null;
+                    }
+                }
+                return origOpen(url, target, features);
+            };
+            pageWin.__missavPlOpenHooked = true;
+        }
+
+        // 捕捉點擊播放器區域時綁在透明容器上的劫持事件
+        document.addEventListener('click', (e) => {
+            if (!uiPrefs.blockPlayerAds || !isVideoUrl(location.href)) return;
+            const target = e.target;
+            if (!target || target.nodeType !== 1) return;
+            if (target.closest('#missav-pl-panel, .missav-pl-overlay, #missav-pl-note-widget, .plyr__controls')) return;
+
+            const inPlayer = target.closest('.plyr, #player');
+            if (!inPlayer) return;
+
+            const badLink = target.closest('a[href]');
+            if (badLink) {
+                const href = badLink.getAttribute('href') || '';
+                let isExternal = !href || href.startsWith('#') || href.startsWith('javascript:');
+                if (!isExternal) {
+                    try {
+                        isExternal = new URL(href, location.origin).origin !== location.origin;
+                    } catch {
+                        isExternal = true;
+                    }
+                }
+                if (isExternal) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    badLink.remove();
+                    notifyAdBlocked('🛡️ 已阻擋播放器廣告跳轉');
+                }
+            }
+        }, true);
+
+        cleanPlayerAds();
+        setInterval(cleanPlayerAds, 1500);
+    }
 
     // 初始化
     applyUiPrefs();
@@ -4919,6 +5206,7 @@
     createFloatingPanel();
     markPageVideos(false);
     injectVideoNoteWidget();
+    installPlayerAdBlocker();
     installNativePlaylistWatcher();
     observer.observe(document.body, { childList: true, subtree: true });
 
