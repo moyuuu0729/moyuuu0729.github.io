@@ -7,6 +7,8 @@
 // @match        https://asmrgay.com/*
 // @run-at       document-start
 // @grant        none
+// @updateURL    https://moyuuu0729.github.io/asmrgay.user.js
+// @downloadURL  https://moyuuu0729.github.io/asmrgay.user.js
 // ==/UserScript==
 
 (function () {
