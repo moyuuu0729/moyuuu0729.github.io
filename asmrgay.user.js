@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         ASMRgay 自訂強化播放器 (進退5秒 + 大標題列表 + 子資料夾掃描)
+// @name         Asmrgay 自訂強化播放器 (進退5秒 + 大標題列表 + 子資料夾掃描)
 // @namespace    https://www.asmrgay.com/
 // @version      2.0.0
 // @description  為 asmrgay.com 打造手機與電腦皆適用的自訂音訊播放器，支援一鍵遞迴掃描子資料夾音檔、進退5秒、完整多行標題大列表、倍速與睡眠定時。
