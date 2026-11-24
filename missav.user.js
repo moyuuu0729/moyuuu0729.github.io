@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MissAV 多片單番號比對標註工具
 // @namespace    http://tampermonkey.net/
-// @version      8.4
+// @version      8.5
 // @description  多片單獨立規則、即時監聽站內收藏自動同步、番號前綴統計排行、多版本去重、變動追蹤、隨機抽片、書籤筆記與分類紀錄
 // @match        https://missav.ws/*
 // @grant        GM_setValue
@@ -1681,6 +1681,7 @@
     }
 
     function showToast(msg) {
+        if (!document.body) return;
         let toast = document.getElementById('missav-pl-toast');
         if (!toast) {
             toast = document.createElement('div');
@@ -5300,9 +5301,17 @@
         }, 1500);
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bootOnDomReady, { once: true });
-    } else {
+    function startWhenBodyReady() {
+        if (!document.body) {
+            setTimeout(startWhenBodyReady, 50);
+            return;
+        }
         bootOnDomReady();
     }
 
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startWhenBodyReady, { once: true });
+    } else {
+        startWhenBodyReady();
+    }
+})();
