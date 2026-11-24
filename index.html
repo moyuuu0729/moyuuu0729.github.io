@@ -644,7 +644,7 @@
             <div class="switcher-bar">
                 <button id="btn-prev" class="nav-arrow" type="button" aria-label="上一個腳本">‹</button>
                 <div id="switcher-pills" class="switcher-pills"></div>
-                <span id="switcher-counter" class="switcher-counter">1 / 3</span>
+                <span id="switcher-counter" class="switcher-counter">1 / 4</span>
                 <button id="btn-next" class="nav-arrow" type="button" aria-label="下一個腳本">›</button>
             </div>
 
@@ -703,13 +703,12 @@
     <div id="toast"></div>
 
     <script>
-        // ==================== 1. 即時在線＋總人數設定（選填） ====================
+        // ==================== 1. 即時在線＋最高在線人數設定（選填） ====================
         // 填入免費 Firebase Realtime Database 網址（例：'https://xxx-default-rtdb.asia-southeast1.firebasedatabase.app'）
-        // 填入後立即啟用「全球真・即時在線人數」與「精準總來訪人數」；留空則自動使用 Vercount 統計總人數
         const FIREBASE_DB_URL = 'https://mingtw0729-default-rtdb.asia-southeast1.firebasedatabase.app/';
 
         // ==================== 2. 卡片輪播預設主題色盤 ====================
-        // 若腳本物件未自行指定 theme，將依序自動套用這組顏色（滑動即換色）
+        // 滑動切換腳本時會依序套用對應外框與強調色
         const DEFAULT_THEMES = [
             { accent: '#eb6395', accent2: '#ff4d79', rgb: '235, 99, 149' }, // 霓虹桃紅
             { accent: '#38bdf8', accent2: '#6366f1', rgb: '56, 189, 248' }, // 電光青藍
@@ -725,21 +724,21 @@
                 title: 'Erome 全能增強腳本',
                 shortTitle: 'Erome 全能增強',
                 tag: '手機 / 電腦通用',
-                fallbackVersion: '4.2.0',
+                fallbackVersion: '4.2.1',
                 theme: DEFAULT_THEMES[0], // 桃紅外框
                 sites: [
                     { name: 'erome.com', url: 'https://www.erome.com/' },
                 ],
-                summary: '整合去廣告、抖音式上下滑動播放、封面點擊預覽、無段縮放多欄排版、斷點續刷與完整設定備份。',
+                summary: '整合去廣告、抖音式上下滑動播放（含即時時鐘與右下角全螢幕）、封面點擊預覽、無段縮放多欄排版、斷點續刷與完整設定備份。',
                 features: [
                     '🎬 抖音模式＋九宮格縮圖抽屜',
+                    '🕒 抖音模式頂部即時時鐘（可切換秒數）＋右下角全螢幕',
                     '⏩ 畫面左右橫滑快轉（上下滑動態調倍率）',
                     '🖼️ 封面點一下靜音預覽、再點開啟',
                     '📐 長方形封面＋無段大小縮放（2～4 欄）',
                     '✨ 精簡封面卡片＋預覽標題跑馬燈',
                     '🔖 斷點續刷自動記憶上次頁碼',
-                    '🎯 可拖曳點選隱藏工具＋去廣告',
-                    '💾 收藏、黑名單與設定一鍵備份還原',
+                    '🎯 可拖曳點選隱藏工具＋完整備份還原',
                 ],
             },
             {
@@ -769,21 +768,43 @@
                 title: 'MissAV 多片單番號比對標註工具',
                 shortTitle: 'MissAV 片單比對',
                 tag: '手機 / 電腦通用',
-                fallbackVersion: '8.0',
+                fallbackVersion: '8.6',
                 theme: DEFAULT_THEMES[2], // 翡翠翠綠外框
                 sites: [
                     { name: 'missav.ws', url: 'https://missav.ws/' },
                 ],
-                summary: '多片單獨立標註與隱藏規則，支援即時監聽站內收藏自動秒同步、番號前綴統計排行、同頁多版本去重、變動追蹤、隨機抽片與時間點書籤筆記。',
+                summary: '多片單獨立標註與隱藏規則，支援即時監聽站內收藏自動秒同步、番號前綴統計排行、同頁多版本去重、變動追蹤、隨機抽片、時間點書籤筆記與播放器去廣告。',
                 features: [
                     '🏷️ 多片單自訂顏色標註與獨立規則（僅標註／淡化／隱藏）',
                     '⚡ 即時監聽站內收藏／移除動作自動秒同步＋定時背景偵測',
+                    '🛡️ 去除播放器點擊彈窗、透明劫持遮罩與暫停廣告',
                     '📑 同頁多版本自動去重（中字／無碼流出／原版自訂優先序）',
                     '📊 番號前綴／片商收藏統計長條圖排行＋一鍵搜系列最新',
-                    '📝 播放頁時間點書籤（一鍵跳轉）與單片筆記管理',
-                    '🚫 封面快捷略過、跨片單重複檢查與同步增減變動追蹤',
-                    '🎲 片單隨機抽片（支援排除已略過與避開近期重複）',
-                    '💾 可拖曳防遮擋浮動列、📜 分類紀錄與完整 JSON 備份',
+                    '📝 播放頁時間點書籤（精準抓主播放器進度）與單片筆記',
+                    '🚫 標題右側快捷加入已略過、跨片單重複檢查與變動追蹤',
+                    '🎲 片單隨機抽片＋可拖曳防遮擋浮動列與完整 JSON 備份',
+                ],
+            },
+            {
+                file: '91porn-plus.user.js',
+                title: '91Porn 全能增強腳本',
+                shortTitle: '91Porn 全能增強',
+                tag: '手機 / 電腦通用',
+                fallbackVersion: '1.4.0',
+                theme: DEFAULT_THEMES[3], // 紫羅蘭外框
+                sites: [
+                    { name: '91porn.com', url: 'https://91porn.com/' },
+                ],
+                summary: '徹底去除 91Porn 播放器與頁面廣告、封面零變形（內嵌添加時間）＋標題＋查看人數、滑到底部自動載入下一頁、抖音上下滑動連刷模式與播放器強化。',
+                features: [
+                    '🛡️ 徹底攔截播放器點擊彈窗、透明遮罩與頁面橫幅廣告',
+                    '🎬 抖音上下滑動連刷模式＋九宮格選集抽屜與手勢快轉',
+                    '🖼️ 封面零變形（左下角內嵌添加時間）＋標題＋查看人數',
+                    '♾️ 滑到底部自動載入下一頁（支援抖音模式無縫續刷）',
+                    '🌙 一鍵護眼深色主題＋響應式 2～4 欄自訂排版',
+                    '✓ 自動標記已看過影片（支援僅標記／淡化／隱藏）',
+                    '⚡ 播放器快捷列（±5s/±10s、0.75x～2x 倍速、畫中畫與斷點續播）',
+                    '🎯 可拖曳點選隱藏元件＋標題／作者關鍵字過濾',
                 ],
             },
         ];
@@ -1082,7 +1103,7 @@
                 const hasManualSites = Array.isArray(script.sites) && script.sites.length > 0;
                 const fallbackName = script.shortTitle || script.title || script.file.split('/').pop();
 
-                // 頂部快速切換標籤（帶各自顏色）
+                // 頂部快速切換標籤
                 const pill = document.createElement('button');
                 pill.type = 'button';
                 pill.id = `pill-${idx}`;
@@ -1202,7 +1223,6 @@
             const peakPill = document.getElementById('pill-peak');
             const dbUrl = (FIREBASE_DB_URL || '').trim().replace(/\/+$/, '');
 
-            // 已填入 Firebase Realtime Database 網址 -> 全球即時在線＋自動刷新歷史最高在線
             if (dbUrl) {
                 try {
                     const [{ initializeApp }, dbMod] = await Promise.all([
@@ -1227,7 +1247,6 @@
                         if (peakEl) peakEl.textContent = val.toLocaleString('zh-Hant');
                     };
 
-                    // 連線成功登記上線，關閉分頁或斷線自動移除
                     dbMod.onValue(connectedRef, (snap) => {
                         if (snap.val() === true) {
                             dbMod.onDisconnect(myOnlineRef).remove().then(() => {
@@ -1236,13 +1255,11 @@
                         }
                     });
 
-                    // 即時監聽歷史最高同時在線人數
                     dbMod.onValue(peakRef, (snap) => {
                         latestPeak = Number(snap.val() || 0);
                         renderPeak();
                     });
 
-                    // 即時監聽目前在線人數，超過歷史紀錄時自動原子更新峰值
                     dbMod.onValue(onlineListRef, (snap) => {
                         const count = snap.exists() ? Object.keys(snap.val() || {}).length : 1;
                         latestOnline = Math.max(1, count);
@@ -1266,7 +1283,6 @@
                 }
             }
 
-            // 尚未填入 FIREBASE_DB_URL 時維持預設顯示並提示
             const showSetupTip = () => showToast('💡 填入免費 Firebase 資料庫網址後即可同步全球在線與最高紀錄');
             onlinePill?.addEventListener('click', showSetupTip);
             peakPill?.addEventListener('click', showSetupTip);
