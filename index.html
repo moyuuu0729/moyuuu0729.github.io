@@ -49,7 +49,7 @@
             justify-content: space-between;
             gap: 14px;
             padding: 20px 22px;
-            margin-bottom: 22px;
+            margin-bottom: 18px;
             border-radius: 18px;
             background: var(--surface);
             border: 1px solid var(--border);
@@ -73,11 +73,120 @@
             color: var(--muted);
         }
 
-        /* 腳本卡片列表 */
-        .script-list {
+        /* 左右切換控制列 */
+        .switcher-bar {
             display: flex;
-            flex-direction: column;
-            gap: 18px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .nav-arrow {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            flex-shrink: 0;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: var(--surface);
+            color: #fff;
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease, opacity 0.15s ease;
+        }
+
+        .nav-arrow:hover:not(:disabled) {
+            background: rgba(235, 99, 149, 0.22);
+            border-color: rgba(235, 99, 149, 0.55);
+        }
+
+        .nav-arrow:active:not(:disabled) {
+            transform: scale(0.94);
+        }
+
+        .nav-arrow:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .switcher-pills {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            padding: 2px;
+        }
+
+        .switcher-pills::-webkit-scrollbar {
+            display: none;
+        }
+
+        .script-pill {
+            flex-shrink: 0;
+            max-width: 220px;
+            padding: 6px 13px;
+            border-radius: 999px;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: all 0.16s ease;
+        }
+
+        .script-pill.active {
+            color: #fff;
+            background: linear-gradient(135deg, rgba(235, 99, 149, 0.32), rgba(255, 77, 121, 0.28));
+            border-color: rgba(235, 99, 149, 0.65);
+        }
+
+        .switcher-counter {
+            flex-shrink: 0;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: #f9a8d4;
+            background: rgba(235, 99, 149, 0.14);
+            border: 1px solid rgba(235, 99, 149, 0.32);
+        }
+
+        /* 輪播視窗與軌道 */
+        .carousel-viewport {
+            overflow: hidden;
+            width: 100%;
+            touch-action: pan-y;
+            transition: height 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .carousel-track {
+            display: flex;
+            align-items: flex-start;
+            will-change: transform;
+            transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .carousel-track.dragging {
+            transition: none;
+        }
+
+        .card-slide {
+            flex: 0 0 100%;
+            min-width: 100%;
+            padding: 2px 2px 12px;
         }
 
         .card {
@@ -85,9 +194,40 @@
             padding: 20px;
             background: var(--surface);
             border: 1px solid var(--border);
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
+        }
+
+        .carousel-dots {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 2px;
+        }
+
+        .dot-btn {
+            width: 8px;
+            height: 8px;
+            padding: 0;
+            border: none;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.22);
+            cursor: pointer;
+            transition: width 0.2s ease, background 0.2s ease;
+        }
+
+        .dot-btn.active {
+            width: 24px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+        }
+
+        .swipe-hint {
+            text-align: center;
+            font-size: 11.5px;
+            color: var(--muted);
+            margin: 6px 0 0;
         }
 
         .card-head {
@@ -270,7 +410,7 @@
 
         /* 安裝教學區 */
         .guide {
-            margin-top: 22px;
+            margin-top: 20px;
             border-radius: 18px;
             padding: 18px 20px;
             background: var(--surface);
@@ -419,7 +559,21 @@
             <button id="btn-share-site" class="btn btn-ghost" type="button">🔗 分享本站網址</button>
         </header>
 
-        <main id="script-list" class="script-list"></main>
+        <main aria-label="腳本清單">
+            <div class="switcher-bar">
+                <button id="btn-prev" class="nav-arrow" type="button" aria-label="上一個腳本">‹</button>
+                <div id="switcher-pills" class="switcher-pills"></div>
+                <span id="switcher-counter" class="switcher-counter">1 / 2</span>
+                <button id="btn-next" class="nav-arrow" type="button" aria-label="下一個腳本">›</button>
+            </div>
+
+            <div id="carousel-viewport" class="carousel-viewport">
+                <div id="carousel-track" class="carousel-track"></div>
+            </div>
+
+            <div id="carousel-dots" class="carousel-dots"></div>
+            <p id="swipe-hint" class="swipe-hint">← 左右滑動卡片或點擊箭頭切換腳本 →</p>
+        </main>
 
         <section class="guide">
             <h2>安裝與更新說明</h2>
@@ -469,12 +623,13 @@
 
     <script>
         // ==================== 腳本設定區（只需改這裡） ====================
-        // file 填寫相對於 index.html 的 .user.js 檔名，頁面會自動讀取 @version 與 @match
-        // sites 可寫網域字串 'www.erome.com'、自訂物件 { name: 'Erome', url: 'https://www.erome.com/' }，或留空 [] 自動抓取 @match
+        // file 填寫相對於 index.html 的 .user.js 檔名，頁面會自動讀取最新的 @version
+        // 若 title / summary / sites 留空，也會自動從腳本內的 @name / @description / @match 抓取
         const SCRIPTS = [
             {
                 file: 'erome-plus.user.js',
-                title: '瀏覽體驗全能增強腳本',
+                title: 'Erome 全能增強腳本',
+                shortTitle: 'Erome 全能增強',
                 tag: '手機 / 電腦通用',
                 fallbackVersion: '4.2.0',
                 sites: [
@@ -492,25 +647,32 @@
                     '💾 收藏、黑名單與設定一鍵備份還原',
                 ],
             },
-            // 要分享第二支腳本時，取消下方註解並填入檔名與說明即可：
-            /*
             {
-                file: 'another-script.user.js',
-                title: '第二支腳本名稱',
-                tag: '工具類',
-                fallbackVersion: '1.0.0',
-                sites: [], // 留空會自動從腳本內的 @match 讀取
-                summary: '簡短介紹這支腳本的功能。',
+                file: 'asmrgay.user.js',
+                title: 'ASMRgay 自訂強化播放器',
+                shortTitle: 'ASMRgay 播放器',
+                tag: '手機 / 電腦通用',
+                fallbackVersion: '2.0.0',
+                sites: [
+                    { name: 'asmrgay.com', url: 'https://www.asmrgay.com/' },
+                ],
+                summary: '為 asmrgay.com 打造手機與電腦皆適用的自訂音訊播放器，支援一鍵遞迴掃描子資料夾音檔、進退 5 秒、完整多行標題大列表、倍速與睡眠定時。',
                 features: [
-                    '✨ 功能特色 1',
-                    '⚡ 功能特色 2',
+                    '📂 一鍵遞迴掃描子資料夾所有音檔（AList / 爬蟲雙引擎）',
+                    '⏪ 快捷進退 5 秒（支援鍵盤 ← → 與空白鍵）',
+                    '📋 完整多行大標題列表抽屜＋即時搜尋篩選',
+                    '🎚️ 多段倍速切換（0.75x～2x）與列表／單曲循環',
+                    '🌙 睡眠定時自動暫停（15 / 30 / 60 分鐘）',
+                    '🎧 支援手機鎖屏與藍牙耳機媒體控制',
+                    '🙈 一鍵隱藏原版播放器＋可收合懸浮膠囊',
+                    '🎯 支援手動點擊定位並綁定任意播放清單',
                 ],
             },
-            */
         ];
         // ================================================================
 
         const rawCodeCache = new Map();
+        let currentIndex = 0;
         let toastTimer = null;
 
         function showToast(msg) {
@@ -587,7 +749,6 @@
                 const raw = String(entry).trim();
                 if (!raw) return;
 
-                // 處理 @match 樣式（如 https://www.erome.com/* 或 *://*.example.com/*）
                 const host = raw
                     .replace(/^(?:\*|https?):\/\//i, '')
                     .replace(/^\*\./, '')
@@ -642,7 +803,7 @@
             const modal = document.getElementById('code-modal');
             const titleEl = document.getElementById('modal-title');
             const codeEl = document.getElementById('modal-code');
-            titleEl.textContent = `${script.file}`;
+            titleEl.textContent = script.file.split('/').pop();
             codeEl.textContent = '載入中...';
             modal.classList.add('open');
             modal.setAttribute('aria-hidden', 'false');
@@ -654,7 +815,7 @@
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     code = await res.text();
                     rawCodeCache.set(script.file, code);
-                } catch (err) {
+                } catch (_) {
                     codeEl.textContent = `無法讀取 ${script.file}（請確認檔名是否正確並已部署至 GitHub Pages）。`;
                     return;
                 }
@@ -668,71 +829,217 @@
             modal.setAttribute('aria-hidden', 'true');
         }
 
+        function updateViewportHeight() {
+            const viewport = document.getElementById('carousel-viewport');
+            const activeSlide = document.querySelector(`.card-slide[data-idx="${currentIndex}"]`);
+            if (viewport && activeSlide && activeSlide.offsetHeight > 0) {
+                viewport.style.height = `${activeSlide.offsetHeight}px`;
+            }
+        }
+
+        function goToScript(idx, wrap = false) {
+            const total = SCRIPTS.length;
+            if (total === 0) return;
+
+            if (wrap) {
+                currentIndex = ((idx % total) + total) % total;
+            } else {
+                currentIndex = Math.max(0, Math.min(total - 1, idx));
+            }
+
+            const track = document.getElementById('carousel-track');
+            track.classList.remove('dragging');
+            track.style.transform = `translate3d(-${currentIndex * 100}%, 0, 0)`;
+
+            const counter = document.getElementById('switcher-counter');
+            if (counter) counter.textContent = `${currentIndex + 1} / ${total}`;
+
+            document.querySelectorAll('.script-pill').forEach((pill, i) => {
+                const isActive = i === currentIndex;
+                pill.classList.toggle('active', isActive);
+                if (isActive) {
+                    pill.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }
+            });
+
+            document.querySelectorAll('.dot-btn').forEach((dot, i) => {
+                dot.classList.toggle('active', i === currentIndex);
+            });
+
+            const single = total <= 1;
+            document.getElementById('btn-prev').disabled = single;
+            document.getElementById('btn-next').disabled = single;
+            const hint = document.getElementById('swipe-hint');
+            if (hint) hint.style.display = single ? 'none' : 'block';
+
+            updateViewportHeight();
+        }
+
+        function setupSwipeGestures() {
+            const viewport = document.getElementById('carousel-viewport');
+            const track = document.getElementById('carousel-track');
+
+            let startX = 0;
+            let startY = 0;
+            let deltaX = 0;
+            let axis = null; // null | 'x' | 'y'
+            let touching = false;
+
+            viewport.addEventListener('touchstart', (e) => {
+                if (SCRIPTS.length <= 1 || !e.touches || e.touches.length !== 1) return;
+                touching = true;
+                axis = null;
+                deltaX = 0;
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            }, { passive: true });
+
+            viewport.addEventListener('touchmove', (e) => {
+                if (!touching || !e.touches || e.touches.length !== 1) return;
+                const dx = e.touches[0].clientX - startX;
+                const dy = e.touches[0].clientY - startY;
+
+                if (!axis) {
+                    if (Math.hypot(dx, dy) < 10) return;
+                    axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'x' : 'y';
+                    if (axis === 'x') track.classList.add('dragging');
+                }
+
+                if (axis === 'x') {
+                    if (e.cancelable) e.preventDefault();
+                    const atStart = currentIndex === 0 && dx > 0;
+                    const atEnd = currentIndex === SCRIPTS.length - 1 && dx < 0;
+                    deltaX = (atStart || atEnd) ? dx * 0.28 : dx;
+                    track.style.transform = `translate3d(calc(-${currentIndex * 100}% + ${deltaX}px), 0, 0)`;
+                }
+            }, { passive: false });
+
+            const finishSwipe = () => {
+                if (!touching) return;
+                touching = false;
+                if (axis === 'x') {
+                    const threshold = Math.min(72, viewport.clientWidth * 0.18);
+                    if (deltaX <= -threshold && currentIndex < SCRIPTS.length - 1) {
+                        goToScript(currentIndex + 1, false);
+                    } else if (deltaX >= threshold && currentIndex > 0) {
+                        goToScript(currentIndex - 1, false);
+                    } else {
+                        goToScript(currentIndex, false);
+                    }
+                }
+                axis = null;
+                deltaX = 0;
+            };
+
+            viewport.addEventListener('touchend', finishSwipe, { passive: true });
+            viewport.addEventListener('touchcancel', finishSwipe, { passive: true });
+        }
+
         function renderScripts() {
-            const listEl = document.getElementById('script-list');
-            listEl.innerHTML = '';
+            const track = document.getElementById('carousel-track');
+            const pillsEl = document.getElementById('switcher-pills');
+            const dotsEl = document.getElementById('carousel-dots');
+            track.innerHTML = '';
+            pillsEl.innerHTML = '';
+            dotsEl.innerHTML = '';
 
             SCRIPTS.forEach((script, idx) => {
                 const fullUrl = buildFullUrl(script.file);
                 const hasManualSites = Array.isArray(script.sites) && script.sites.length > 0;
-                const card = document.createElement('article');
-                card.className = 'card';
-                card.innerHTML = `
-                    <div class="card-head">
-                        <h2 class="card-title">${escapeHtml(script.title)}</h2>
-                        <div class="badges">
-                            <span class="badge version" id="ver-${idx}">v${escapeHtml(script.fallbackVersion || '1.0.0')}</span>
-                            <span class="badge" id="status-${idx}">${escapeHtml(script.tag || 'UserScript')}</span>
-                        </div>
-                    </div>
-                    <div class="sites-row" id="sites-${idx}">
-                        ${renderSiteChipsHtml(hasManualSites ? script.sites : [])}
-                    </div>
-                    <p class="card-desc">${escapeHtml(script.summary || '')}</p>
-                    ${Array.isArray(script.features) && script.features.length ? `
-                        <ul class="features">
-                            ${script.features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}
-                        </ul>
-                    ` : ''}
-                    <div class="url-box">
-                        <code title="${escapeHtml(fullUrl)}">${escapeHtml(fullUrl)}</code>
-                    </div>
-                    <div class="actions">
-                        <a class="btn btn-primary" href="${escapeHtml(script.file)}" target="_blank" rel="noopener">🚀 一鍵安裝 / 更新</a>
-                        <button class="btn btn-secondary" type="button" data-copy-idx="${idx}">📋 複製安裝網址</button>
-                        <button class="btn btn-ghost" type="button" data-view-idx="${idx}">👁️ 預覽原始碼</button>
-                    </div>
-                `;
-                listEl.appendChild(card);
+                const fallbackName = script.shortTitle || script.title || script.file.split('/').pop();
 
-                card.querySelector(`[data-copy-idx="${idx}"]`).addEventListener('click', () => {
+                // 頂部快速切換標籤
+                const pill = document.createElement('button');
+                pill.type = 'button';
+                pill.id = `pill-${idx}`;
+                pill.className = 'script-pill';
+                pill.textContent = fallbackName;
+                pill.title = script.title || fallbackName;
+                pill.addEventListener('click', () => goToScript(idx, false));
+                pillsEl.appendChild(pill);
+
+                // 底部指示圓點
+                const dot = document.createElement('button');
+                dot.type = 'button';
+                dot.className = 'dot-btn';
+                dot.setAttribute('aria-label', `切換到 ${script.title || fallbackName}`);
+                dot.addEventListener('click', () => goToScript(idx, false));
+                dotsEl.appendChild(dot);
+
+                // 卡片本體
+                const slide = document.createElement('div');
+                slide.className = 'card-slide';
+                slide.dataset.idx = String(idx);
+                slide.innerHTML = `
+                    <article class="card">
+                        <div class="card-head">
+                            <h2 class="card-title" id="title-${idx}">${escapeHtml(script.title || fallbackName)}</h2>
+                            <div class="badges">
+                                <span class="badge version" id="ver-${idx}">v${escapeHtml(script.fallbackVersion || '1.0.0')}</span>
+                                <span class="badge" id="status-${idx}">${escapeHtml(script.tag || 'UserScript')}</span>
+                            </div>
+                        </div>
+                        <div class="sites-row" id="sites-${idx}">
+                            ${renderSiteChipsHtml(hasManualSites ? script.sites : [])}
+                        </div>
+                        <p class="card-desc" id="desc-${idx}">${escapeHtml(script.summary || '')}</p>
+                        ${Array.isArray(script.features) && script.features.length ? `
+                            <ul class="features">
+                                ${script.features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}
+                            </ul>
+                        ` : ''}
+                        <div class="url-box">
+                            <code title="${escapeHtml(fullUrl)}">${escapeHtml(fullUrl)}</code>
+                        </div>
+                        <div class="actions">
+                            <a class="btn btn-primary" href="${escapeHtml(script.file)}" target="_blank" rel="noopener">🚀 一鍵安裝 / 更新</a>
+                            <button class="btn btn-secondary" type="button" data-copy-idx="${idx}">📋 複製安裝網址</button>
+                            <button class="btn btn-ghost" type="button" data-view-idx="${idx}">👁️ 預覽原始碼</button>
+                        </div>
+                    </article>
+                `;
+                track.appendChild(slide);
+
+                slide.querySelector(`[data-copy-idx="${idx}"]`).addEventListener('click', () => {
                     copyText(fullUrl, '✅ 已複製安裝網址，可貼至 Tampermonkey');
                 });
-                card.querySelector(`[data-view-idx="${idx}"]`).addEventListener('click', () => {
+                slide.querySelector(`[data-view-idx="${idx}"]`).addEventListener('click', () => {
                     openCodeModal(script);
                 });
 
-                // 背景自動抓取同目錄 .user.js 以即時同步最新版本號與適用網站
+                // 背景自動抓取 .user.js 以即時同步最新版本號、標題、簡介與適用網站
                 fetch(`${script.file}?t=${Date.now()}`, { cache: 'no-store' })
                     .then((res) => (res.ok ? res.text() : Promise.reject(res.status)))
                     .then((code) => {
                         rawCodeCache.set(script.file, code);
                         const meta = parseUserscriptMeta(code);
+                        const titleEl = document.getElementById(`title-${idx}`);
+                        const descEl = document.getElementById(`desc-${idx}`);
+                        const pillEl = document.getElementById(`pill-${idx}`);
                         const verEl = document.getElementById(`ver-${idx}`);
                         const statusEl = document.getElementById(`status-${idx}`);
                         const sitesEl = document.getElementById(`sites-${idx}`);
 
+                        if (titleEl && !script.title && meta.name) titleEl.textContent = meta.name;
+                        if (pillEl && !script.shortTitle && !script.title && meta.name) {
+                            pillEl.textContent = meta.name;
+                            pillEl.title = meta.name;
+                        }
+                        if (descEl) {
+                            if (!script.summary && meta.description) descEl.textContent = meta.description;
+                            descEl.style.display = descEl.textContent.trim() ? '' : 'none';
+                        }
                         if (verEl && meta.version) verEl.textContent = `v${meta.version}`;
                         if (statusEl) {
                             statusEl.textContent = '● 檔案正常可安裝';
                             statusEl.classList.add('live-ok');
                         }
-                        // 若未手動設定 sites，自動把 @match / @include 顯示成可點擊的適用網站標籤
                         if (sitesEl && !hasManualSites) {
                             sitesEl.innerHTML = meta.matches.length
                                 ? renderSiteChipsHtml(meta.matches)
                                 : `<span class="sites-label">🌐 適用網站：</span><span>未指定</span>`;
                         }
+                        if (idx === currentIndex) updateViewportHeight();
                     })
                     .catch(() => {
                         const statusEl = document.getElementById(`status-${idx}`);
@@ -741,9 +1048,29 @@
                         if (sitesEl && !hasManualSites) {
                             sitesEl.innerHTML = `<span class="sites-label">🌐 適用網站：</span><span>無法讀取</span>`;
                         }
+                        if (idx === currentIndex) updateViewportHeight();
                     });
             });
+
+            goToScript(0, false);
         }
+
+        // 左右箭頭與鍵盤快捷鍵（支援循環切換）
+        document.getElementById('btn-prev').addEventListener('click', () => goToScript(currentIndex - 1, true));
+        document.getElementById('btn-next').addEventListener('click', () => goToScript(currentIndex + 1, true));
+
+        window.addEventListener('keydown', (e) => {
+            const modalOpen = document.getElementById('code-modal').classList.contains('open');
+            if (modalOpen) {
+                if (e.key === 'Escape') closeCodeModal();
+                return;
+            }
+            if (SCRIPTS.length <= 1) return;
+            if (e.key === 'ArrowLeft') goToScript(currentIndex - 1, true);
+            else if (e.key === 'ArrowRight') goToScript(currentIndex + 1, true);
+        });
+
+        window.addEventListener('resize', updateViewportHeight);
 
         // 切換手機／電腦教學分頁
         document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -768,6 +1095,7 @@
             copyText(window.location.href, '🔗 已複製分享站網址');
         });
 
+        setupSwipeGestures();
         renderScripts();
     </script>
 </body>
