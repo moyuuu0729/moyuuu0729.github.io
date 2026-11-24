@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Erome 全能增強：去廣告 / 黑名單 / 點選隱藏 / 作者追片 / 完整備份 / 抖音模式
 // @namespace    https://www.erome.com/
-// @version      4.1.6
+// @version      4.1.7
 // @description  去廣告、視覺化點選隱藏、作者與關鍵字黑名單、隱藏 Suggested users、略過 18+、豎屏過濾、列表指定開刷、網站底部無限滾動、點擊 @作者名 快速追片、全設定一鍵 JSON 備份還原與抖音滑動播放器
 // @author       MingTW0729
 // @match        https://www.erome.com/*
@@ -6121,10 +6121,20 @@
         }, 250);
     }
 
-    // ==================== 14.6 抖音模式即時現實時間 ====================
+    // ==================== 14.6 抖音模式即時現實時間＆全螢幕移至右下角 ====================
     let feedClockStyleInjected = false;
     let feedClockTimer = null;
     let feedClockShowSeconds = false;
+
+    function findFeedFullscreenBtn(overlay) {
+        const bySelector = overlay.querySelector(
+            '#ef-feed-fullscreen, #ef-feed-fs, #ef-fullscreen-btn, .ef-fs-btn, button[title*="全螢幕"], button[title*="Fullscreen" i]'
+        );
+        if (bySelector) return bySelector;
+        return Array.from(overlay.querySelectorAll('button')).find(
+            (b) => !b.closest('.ef-slide') && /全螢幕|⛶|🖵/i.test((b.textContent || '') + (b.title || ''))
+        ) || null;
+    }
 
     function ensureFeedClock() {
         const overlay = document.getElementById('ef-feed-overlay');
@@ -6133,68 +6143,84 @@
         if (!feedClockStyleInjected) {
             feedClockStyleInjected = true;
             injectStyle(`
+                /* 現實時間放在原本全螢幕按鈕的位置 */
                 #ef-feed-clock {
-                    position: absolute;
-                    top: calc(56px + env(safe-area-inset-top, 0px));
-                    left: 12px;
-                    z-index: 42;
-                    padding: 3px 10px;
-                    border-radius: 999px;
-                    background: rgba(15, 15, 22, 0.58);
-                    border: 1px solid rgba(255, 255, 255, 0.16);
-                    color: rgba(255, 255, 255, 0.92);
-                    font-size: 12px;
-                    font-weight: 700;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
                     font-variant-numeric: tabular-nums;
                     letter-spacing: 0.04em;
-                    line-height: 1.4;
-                    backdrop-filter: blur(6px);
-                    -webkit-backdrop-filter: blur(6px);
-                    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+                    font-weight: 700;
+                    white-space: nowrap;
                     cursor: pointer;
                     user-select: none;
                     -webkit-user-select: none;
-                    transition: top 0.2s ease, opacity 0.2s ease;
                 }
-                #ef-feed-clock:active {
-                    transform: scale(0.95);
+                #ef-feed-clock.ef-clock-fallback {
+                    position: absolute;
+                    top: calc(12px + env(safe-area-inset-top, 0px));
+                    left: 12px;
+                    z-index: 42;
+                    padding: 4px 10px;
+                    border-radius: 999px;
+                    font-size: 12px;
+                    color: #fff;
+                    background: rgba(15, 15, 22, 0.62);
+                    border: 1px solid rgba(255, 255, 255, 0.18);
+                    backdrop-filter: blur(6px);
+                    -webkit-backdrop-filter: blur(6px);
+                }
+                /* 全螢幕按鈕改停靠於右下角（若覺得偏低蓋到進度條，可將 16px 調高為 56px） */
+                #ef-feed-overlay .ef-fs-bottom-right {
+                    position: absolute !important;
+                    right: 12px !important;
+                    bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+                    top: auto !important;
+                    left: auto !important;
+                    z-index: 43 !important;
+                    margin: 0 !important;
+                    background: rgba(15, 15, 22, 0.65) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+                    color: #fff !important;
+                    backdrop-filter: blur(6px);
+                    -webkit-backdrop-filter: blur(6px);
+                    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
                 }
             `);
         }
 
         let clockEl = document.getElementById('ef-feed-clock');
+        const fsBtn = findFeedFullscreenBtn(overlay);
+
         if (!clockEl) {
-            clockEl = document.createElement('div');
+            clockEl = document.createElement('button');
+            clockEl.type = 'button';
             clockEl.id = 'ef-feed-clock';
-            clockEl.title = '點擊切換顯示秒數';
+            clockEl.title = '目前現實時間（點擊切換顯示秒數）';
             clockEl.addEventListener('click', (e) => {
                 e.stopPropagation();
                 feedClockShowSeconds = !feedClockShowSeconds;
                 updateFeedClockText();
             });
-            overlay.appendChild(clockEl);
-        }
-        return clockEl;
-    }
 
-    function updateFeedClockPosition() {
-        const overlay = document.getElementById('ef-feed-overlay');
-        const clockEl = document.getElementById('ef-feed-clock');
-        if (!overlay || !clockEl) return;
-
-        // 自動貼合頂部工具列下方避免重疊；若專注模式隱藏了頂部列，則自動上移到左上角
-        const topbar = overlay.querySelector('.ef-feed-topbar, #ef-feed-topbar, .ef-topbar');
-        if (topbar) {
-            const style = window.getComputedStyle(topbar);
-            const rect = topbar.getBoundingClientRect();
-            const overlayRect = overlay.getBoundingClientRect();
-            if (style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.height > 0) {
-                const topPx = Math.max(10, Math.round(rect.bottom - overlayRect.top + 6));
-                clockEl.style.top = `${topPx}px`;
-                return;
+            if (fsBtn && fsBtn.parentNode) {
+                // 沿用原按鈕外觀，插回全螢幕按鈕原本的位子
+                clockEl.className = fsBtn.className || 'ef-pill-btn';
+                clockEl.classList.remove('ef-fs-bottom-right');
+                fsBtn.parentNode.insertBefore(clockEl, fsBtn);
+            } else {
+                clockEl.className = 'ef-clock-fallback';
+                overlay.appendChild(clockEl);
             }
         }
-        clockEl.style.top = 'calc(12px + env(safe-area-inset-top, 0px))';
+
+        // 將全螢幕按鈕搬到抖音畫面右下角
+        if (fsBtn && !fsBtn.classList.contains('ef-fs-bottom-right')) {
+            fsBtn.classList.add('ef-fs-bottom-right');
+            overlay.appendChild(fsBtn);
+        }
+
+        return clockEl;
     }
 
     function updateFeedClockText() {
@@ -6205,7 +6231,6 @@
         const mm = String(now.getMinutes()).padStart(2, '0');
         const ss = String(now.getSeconds()).padStart(2, '0');
         clockEl.textContent = feedClockShowSeconds ? `${hh}:${mm}:${ss}` : `${hh}:${mm}`;
-        updateFeedClockPosition();
     }
 
     function startFeedClock() {
