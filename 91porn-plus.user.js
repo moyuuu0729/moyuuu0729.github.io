@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         91Porn 全能增強：去廣告 / 極簡列表 / 無限滾動 / 抖音模式 / 播放器強化
 // @namespace    https://91porn.com/
-// @version      1.4.0
+// @version      1.5.0
 // @description  徹底去除 91Porn 播放器與頁面廣告、封面零變形(內嵌添加時間)＋標題＋查看人數、滑到底部自動載入下一頁、抖音上下滑動連刷模式與播放器強化。
 // @match        *://*.91porn.com/*
 // @match        *://91porn.com/*
@@ -492,6 +492,9 @@
         #p91-feed-overlay {
             position: fixed;
             inset: 0;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
             z-index: 2147483644;
             background: #050608;
             color: #f3f4f6;
@@ -502,8 +505,12 @@
             touch-action: none;
         }
         .p91-feed-track {
+            position: relative;
+            z-index: 2;
             width: 100%;
             height: 100%;
+            display: flex;
+            flex-direction: column;
             will-change: transform;
             transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
         }
@@ -512,8 +519,10 @@
         }
         .p91-feed-slide {
             position: relative;
+            flex: 0 0 100%;
             width: 100%;
             height: 100%;
+            min-height: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -526,8 +535,9 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
-            opacity: 0.55;
+            opacity: 0.5;
             pointer-events: none;
+            z-index: 1;
         }
         .p91-feed-video {
             position: relative;
@@ -542,12 +552,14 @@
             z-index: 5;
             padding: 8px 16px;
             border-radius: 999px;
-            background: rgba(15, 17, 23, 0.82);
+            background: rgba(15, 17, 23, 0.85);
             border: 1px solid rgba(167, 139, 250, 0.45);
             color: #f3f4f6;
             font-size: 13px;
             font-weight: 700;
             pointer-events: none;
+            text-align: center;
+            max-width: 86vw;
         }
         .p91-feed-center-icon {
             position: absolute;
@@ -572,9 +584,9 @@
             transform: scale(1);
         }
 
-        /* 抖音模式頂部工具列（右上含現實時鐘） */
+        /* 抖音模式頂部工具列 */
         #p91-feed-topbar {
-            position: absolute;
+            position: fixed;
             top: calc(10px + env(safe-area-inset-top, 0px));
             left: 12px;
             right: 12px;
@@ -594,7 +606,7 @@
         .p91-fbtn {
             padding: 6px 11px;
             border-radius: 999px;
-            background: rgba(15, 17, 23, 0.68);
+            background: rgba(15, 17, 23, 0.72);
             border: 1px solid rgba(255, 255, 255, 0.18);
             color: #f3f4f6;
             font-size: 12px;
@@ -610,13 +622,13 @@
 
         /* 右下角全螢幕按鈕（避開底部進度條） */
         #p91-feed-fs-btn {
-            position: absolute;
+            position: fixed;
             right: 12px;
-            bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+            bottom: calc(82px + env(safe-area-inset-bottom, 0px));
             z-index: 32;
             padding: 7px 12px;
             border-radius: 999px;
-            background: rgba(15, 17, 23, 0.72);
+            background: rgba(15, 17, 23, 0.76);
             border: 1px solid rgba(255, 255, 255, 0.22);
             color: #fff;
             font-size: 12px;
@@ -627,21 +639,21 @@
             box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
         }
 
-        /* 抖音模式底部資訊與進度條 */
-        .p91-feed-bottom {
-            position: absolute;
+        /* 抖音模式固定底部資訊與進度條（不隨滑動跑位） */
+        #p91-feed-bottom-dock {
+            position: fixed;
             left: 0;
             right: 0;
             bottom: 0;
             z-index: 25;
-            padding: 28px 14px calc(12px + env(safe-area-inset-bottom, 0px));
-            background: linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.45) 65%, transparent 100%);
+            padding: 26px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.5) 68%, transparent 100%);
             display: flex;
             flex-direction: column;
             gap: 8px;
             pointer-events: none;
         }
-        .p91-feed-meta {
+        #p91-feed-meta {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
@@ -651,7 +663,7 @@
             color: #cbd5e1;
             padding-right: 92px;
         }
-        .p91-feed-title {
+        #p91-feed-title {
             font-size: 14px;
             font-weight: 700;
             color: #ffffff;
@@ -661,32 +673,35 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
             padding-right: 92px;
-            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
         }
         .p91-feed-scrub-row {
             display: flex;
             align-items: center;
             gap: 8px;
+            width: 100%;
             pointer-events: auto;
         }
-        .p91-feed-time {
+        #p91-feed-time {
+            flex-shrink: 0;
             font-size: 11px;
             font-weight: 700;
             color: #e5e7eb;
             font-variant-numeric: tabular-nums;
-            min-width: 78px;
+            min-width: 82px;
             text-align: right;
         }
-        .p91-feed-range {
+        #p91-feed-range {
             flex: 1;
-            height: 4px;
+            width: 100%;
+            height: 6px;
             accent-color: #ec4899;
             cursor: pointer;
         }
 
         /* 抖音模式手勢快轉 HUD */
         #p91-feed-hud {
-            position: absolute;
+            position: fixed;
             top: 46%;
             left: 50%;
             transform: translate(-50%, -50%);
@@ -709,10 +724,10 @@
 
         /* 抖音模式九宮格選集抽屜 */
         #p91-feed-drawer {
-            position: absolute;
+            position: fixed;
             inset: 0;
             z-index: 40;
-            background: rgba(5, 6, 8, 0.82);
+            background: rgba(5, 6, 8, 0.86);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
             display: none;
@@ -862,7 +877,7 @@
             border-top: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        /* 點選隱藏元件工具列（可拖曳＋一鍵上下換位） */
+        /* 點選隱藏元件工具列 */
         #p91-picker-highlight {
             position: fixed;
             pointer-events: none;
@@ -1791,17 +1806,16 @@
         }
     }
 
-    // ==================== 7. 抖音模式（垂直上下滑動連刷＋串流解析＋手勢快轉） ====================
+    // ==================== 7. 抖音模式（動態播放器串流解析＋固定底部進度條＋上下滑動） ====================
     function collectFeedItemsFromPage() {
         const list = [];
         const seen = new Set();
 
-        // 若目前正在播放頁，將本頁正在看的影片排在第一部
         const curVk = extractViewKey(location.href);
         if (curVk && location.pathname.includes('view_video.php')) {
             const curVideo = document.querySelector('#player_one video, .video-js video, video');
             const curSrc = curVideo?.currentSrc || curVideo?.src || '';
-            if (curSrc && !curSrc.startsWith('blob:')) {
+            if (curSrc && !AD_DOMAIN_RE.test(curSrc)) {
                 streamCache.set(curVk, curSrc);
             }
             const h1 = document.querySelector('h4, h3, .login_register_header, title');
@@ -1857,10 +1871,27 @@
         });
     }
 
-    async function resolveStreamViaHiddenIframe(url) {
+    function extractMediaSrcFromDoc(doc, baseUrl) {
+        if (!doc) return '';
+        const candidates = Array.from(doc.querySelectorAll('#player_one video, .video-js video, video, source'));
+        for (const el of candidates) {
+            if (el.closest('.ima-ad-container, [class*="ima-"]')) continue;
+            const raw = el.currentSrc || el.src || el.getAttribute('src') || '';
+            if (!raw || AD_DOMAIN_RE.test(raw)) continue;
+            try {
+                return new URL(raw, baseUrl).href;
+            } catch {
+                return raw;
+            }
+        }
+        return '';
+    }
+
+    // 在抖音覆蓋層後方（z-index: 1）載入真實播放頁，讓頁面 JS 正常解碼出影片串流
+    async function resolveStreamViaSandboxFrame(url, onStatus) {
         return new Promise((resolve) => {
             const ifr = document.createElement('iframe');
-            ifr.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:320px;height:180px;opacity:0;pointer-events:none;';
+            ifr.style.cssText = 'position:fixed;left:0;top:0;width:480px;height:270px;z-index:1;opacity:0.01;pointer-events:none;border:none;';
             ifr.src = url;
             document.body.appendChild(ifr);
 
@@ -1871,50 +1902,67 @@
                 clearInterval(pollTimer);
                 clearTimeout(timeoutTimer);
                 try {
+                    const doc = ifr.contentDocument;
+                    doc?.querySelectorAll('video').forEach((v) => {
+                        v.muted = true;
+                        v.pause();
+                    });
                     ifr.src = 'about:blank';
                     ifr.remove();
                 } catch {}
                 resolve(foundUrl || '');
             };
 
+            let ticks = 0;
             const pollTimer = setInterval(() => {
+                ticks++;
                 try {
                     const doc = ifr.contentDocument;
                     if (!doc) return;
-                    const v = doc.querySelector('#player_one video, .video-js video, video');
-                    if (v) {
+
+                    // 靜音並移除 iframe 內干擾元件
+                    doc.querySelectorAll('video').forEach((v) => {
                         v.muted = true;
-                        v.pause();
-                        const src = v.currentSrc || v.src || v.querySelector('source')?.src || '';
-                        if (src && !src.startsWith('blob:') && !AD_DOMAIN_RE.test(src)) {
-                            cleanup(src);
-                        }
+                    });
+                    doc.querySelectorAll('iframe, ins, [class*="ima-"], [id*="ima_"]').forEach((n) => {
+                        if (n !== ifr) n.remove();
+                    });
+
+                    // 若播放器有播放按鈕且尚未產生影片，嘗試觸發一次
+                    if (ticks === 4) {
+                        const playBtn = doc.querySelector('.vjs-big-play-button, [class*="play-btn"]');
+                        if (playBtn && typeof playBtn.click === 'function') playBtn.click();
+                    }
+
+                    const found = extractMediaSrcFromDoc(doc, url);
+                    if (found) {
+                        cleanup(found);
+                    } else if (ticks === 8 && typeof onStatus === 'function') {
+                        onStatus('⏳ 正在等待播放器解碼串流...');
                     }
                 } catch {}
-            }, 300);
+            }, 350);
 
-            const timeoutTimer = setTimeout(() => cleanup(''), 7500);
+            const timeoutTimer = setTimeout(() => cleanup(''), 11000);
         });
     }
 
-    async function resolveVideoStreamUrl(item) {
+    async function resolveVideoStreamUrl(item, onStatus) {
         const cacheKey = item.vk || item.url;
         if (streamCache.has(cacheKey)) {
             return streamCache.get(cacheKey);
         }
 
-        // 1. 快速 fetch 頁面原始碼提取 MP4 / M3U8 直連
+        // 1. 先嘗試直接從 HTML 擷取明確的 mp4 / m3u8 網址
         try {
             const res = await fetch(item.url, { credentials: 'include' });
             if (res.ok) {
                 const html = await res.text();
                 const doc = new DOMParser().parseFromString(html, 'text/html');
-                const sourceEl = doc.querySelector('#player_one source[src], video source[src], video[src]');
-                const domSrc = sourceEl?.getAttribute('src') || '';
-                if (domSrc && !domSrc.startsWith('blob:') && !AD_DOMAIN_RE.test(domSrc)) {
-                    const abs = new URL(domSrc, item.url).href;
-                    streamCache.set(cacheKey, abs);
-                    return abs;
+                const directDom = extractMediaSrcFromDoc(doc, item.url);
+                if (directDom && !directDom.startsWith('blob:')) {
+                    streamCache.set(cacheKey, directDom);
+                    return directDom;
                 }
 
                 const mediaMatch = html.match(/https?:\/\/[^"'\\\s<>]+\.(?:mp4|m3u8)(?:\?[^"'\\\s<>]*)?/i);
@@ -1925,12 +1973,12 @@
             }
         } catch {}
 
-        // 2. 備援：若頁面透過 JS strencode2 動態解碼網址，使用無廣告隱藏沙盒取得真實串流
-        const iframeSrc = await resolveStreamViaHiddenIframe(item.url);
-        if (iframeSrc) {
-            streamCache.set(cacheKey, iframeSrc);
+        // 2. 透過真實背景框架執行頁面 JS，取得加密/動態串流網址
+        const frameSrc = await resolveStreamViaSandboxFrame(item.url, onStatus);
+        if (frameSrc) {
+            streamCache.set(cacheKey, frameSrc);
         }
-        return iframeSrc;
+        return frameSrc;
     }
 
     async function attachStreamToVideo(videoEl, streamUrl, slideIdx) {
@@ -1991,7 +2039,6 @@
             return;
         }
 
-        // 暫停原頁面正在播放的影片
         document.querySelectorAll('video').forEach((v) => {
             try { v.pause(); } catch {}
         });
@@ -2017,6 +2064,14 @@
             </div>
             <div id="p91-feed-track" class="p91-feed-track"></div>
             <button type="button" id="p91-feed-fs-btn" title="切換全螢幕">⛶ 全螢幕</button>
+            <div id="p91-feed-bottom-dock">
+                <div id="p91-feed-meta"></div>
+                <div id="p91-feed-title"></div>
+                <div class="p91-feed-scrub-row">
+                    <input type="range" id="p91-feed-range" min="0" max="1000" value="0" />
+                    <span id="p91-feed-time">00:00 / 00:00</span>
+                </div>
+            </div>
             <div id="p91-feed-hud"></div>
             <div id="p91-feed-drawer">
                 <div class="p91-drawer-head">
@@ -2031,39 +2086,89 @@
         const track = overlay.querySelector('#p91-feed-track');
         const hud = overlay.querySelector('#p91-feed-hud');
         const counterEl = overlay.querySelector('#p91-feed-counter');
+        const metaEl = overlay.querySelector('#p91-feed-meta');
+        const titleEl = overlay.querySelector('#p91-feed-title');
+        const rangeEl = overlay.querySelector('#p91-feed-range');
+        const timeEl = overlay.querySelector('#p91-feed-time');
         const drawerEl = overlay.querySelector('#p91-feed-drawer');
         const drawerGrid = overlay.querySelector('#p91-drawer-grid');
+
+        let scrubbing = false;
+        let activeProgressTimer = null;
+
+        const syncBottomDockToItem = (item) => {
+            if (!item) return;
+            const metaParts = [];
+            if (item.addedTime) metaParts.push(`🕒 ${item.addedTime}`);
+            if (item.views) metaParts.push(`👁️ ${item.views}`);
+            if (item.duration) metaParts.push(`⏱ ${item.duration}`);
+            metaEl.textContent = metaParts.join(' · ');
+            titleEl.textContent = item.title || '';
+            rangeEl.value = '0';
+            timeEl.textContent = '00:00 / 00:00';
+        };
+
+        const bindProgressSync = (video) => {
+            if (activeProgressTimer) {
+                clearInterval(activeProgressTimer);
+                activeProgressTimer = null;
+            }
+            if (!video) return;
+            activeProgressTimer = setInterval(() => {
+                if (!feedOpen || scrubbing) return;
+                if (Number.isFinite(video.duration) && video.duration > 0) {
+                    rangeEl.value = String(Math.round((video.currentTime / video.duration) * 1000));
+                    timeEl.textContent = `${formatSec(video.currentTime)} / ${formatSec(video.duration)}`;
+                }
+            }, 250);
+        };
+
+        rangeEl.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            scrubbing = true;
+        });
+        rangeEl.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            scrubbing = true;
+        }, { passive: true });
+        rangeEl.addEventListener('input', (e) => {
+            e.stopPropagation();
+            const curVideo = track.children[feedIndex]?.querySelector('video');
+            if (curVideo && Number.isFinite(curVideo.duration) && curVideo.duration > 0) {
+                const preview = (Number(rangeEl.value) / 1000) * curVideo.duration;
+                timeEl.textContent = `${formatSec(preview)} / ${formatSec(curVideo.duration)}`;
+            }
+        });
+        const commitScrub = () => {
+            const curVideo = track.children[feedIndex]?.querySelector('video');
+            if (curVideo && Number.isFinite(curVideo.duration) && curVideo.duration > 0) {
+                curVideo.currentTime = (Number(rangeEl.value) / 1000) * curVideo.duration;
+            }
+            scrubbing = false;
+        };
+        rangeEl.addEventListener('change', (e) => {
+            e.stopPropagation();
+            commitScrub();
+        });
+        rangeEl.addEventListener('pointerup', (e) => {
+            e.stopPropagation();
+            commitScrub();
+        });
 
         const buildSlide = (item, idx) => {
             const slide = document.createElement('div');
             slide.className = 'p91-feed-slide';
             slide.dataset.idx = String(idx);
 
-            const metaParts = [];
-            if (item.addedTime) metaParts.push(`🕒 ${item.addedTime}`);
-            if (item.views) metaParts.push(`👁️ ${item.views}`);
-            if (item.duration) metaParts.push(`⏱ ${item.duration}`);
-
             slide.innerHTML = `
                 ${item.poster ? `<img class="p91-feed-poster" src="${item.poster}" alt="" />` : ''}
                 <video class="p91-feed-video" playsinline webkit-playsinline preload="metadata" loop></video>
                 <div class="p91-feed-status">⏳ 正在載入影片...</div>
                 <div class="p91-feed-center-icon">▶</div>
-                <div class="p91-feed-bottom">
-                    <div class="p91-feed-meta">${metaParts.join(' · ')}</div>
-                    <div class="p91-feed-title">${item.title}</div>
-                    <div class="p91-feed-scrub-row">
-                        <input type="range" class="p91-feed-range" min="0" max="1000" value="0" />
-                        <span class="p91-feed-time">00:00 / 00:00</span>
-                    </div>
-                </div>
             `;
 
             const video = slide.querySelector('video');
             const statusEl = slide.querySelector('.p91-feed-status');
-            const rangeEl = slide.querySelector('.p91-feed-range');
-            const timeEl = slide.querySelector('.p91-feed-time');
-            let scrubbing = false;
 
             video.muted = cfg.feedMuted;
             video.playbackRate = cfg.playbackRate || 1.0;
@@ -2077,29 +2182,11 @@
                     statusEl.style.display = 'block';
                 }
             });
-            video.addEventListener('timeupdate', () => {
-                if (scrubbing || !Number.isFinite(video.duration) || video.duration <= 0) return;
-                rangeEl.value = String(Math.round((video.currentTime / video.duration) * 1000));
-                timeEl.textContent = `${formatSec(video.currentTime)} / ${formatSec(video.duration)}`;
-            });
-
-            rangeEl.addEventListener('pointerdown', (e) => {
-                e.stopPropagation();
-                scrubbing = true;
-            });
-            rangeEl.addEventListener('input', (e) => {
-                e.stopPropagation();
-                if (Number.isFinite(video.duration) && video.duration > 0) {
-                    const preview = (Number(rangeEl.value) / 1000) * video.duration;
-                    timeEl.textContent = `${formatSec(preview)} / ${formatSec(video.duration)}`;
+            video.addEventListener('error', () => {
+                if (idx === feedIndex) {
+                    statusEl.textContent = '⚠️ 串流無法播放，請上滑看下一部';
+                    statusEl.style.display = 'block';
                 }
-            });
-            rangeEl.addEventListener('change', (e) => {
-                e.stopPropagation();
-                if (Number.isFinite(video.duration) && video.duration > 0) {
-                    video.currentTime = (Number(rangeEl.value) / 1000) * video.duration;
-                }
-                scrubbing = false;
             });
 
             return slide;
@@ -2140,10 +2227,10 @@
             const item = feedItems[idx];
             if (!item) return;
 
+            syncBottomDockToItem(item);
             if (item.vk) markVideoAsWatched(item.vk);
             enhanceVideoCards();
 
-            // 暫停其他滑塊影片並釋放過遠的記憶體
             Array.from(track.children).forEach((sl, i) => {
                 const v = sl.querySelector('video');
                 if (!v) return;
@@ -2162,17 +2249,24 @@
             const video = activeSlide.querySelector('video');
             const statusEl = activeSlide.querySelector('.p91-feed-status');
 
+            bindProgressSync(video);
             video.muted = cfg.feedMuted;
             video.playbackRate = cfg.playbackRate || 1.0;
 
             if (activeSlide.dataset.loaded !== '1') {
                 statusEl.textContent = '⏳ 正在解析影片串流...';
                 statusEl.style.display = 'block';
-                const streamUrl = await resolveVideoStreamUrl(item);
+                const streamUrl = await resolveVideoStreamUrl(item, (msg) => {
+                    if (feedOpen && idx === feedIndex) {
+                        statusEl.textContent = msg;
+                        statusEl.style.display = 'block';
+                    }
+                });
                 if (!feedOpen || idx !== feedIndex) return;
 
                 if (!streamUrl) {
-                    statusEl.textContent = '⚠️ 無法取得串流，上滑看下一部';
+                    statusEl.textContent = '⚠️ 無法取得串流，請上滑看下一部';
+                    statusEl.style.display = 'block';
                     return;
                 }
                 activeSlide.dataset.loaded = '1';
@@ -2180,19 +2274,16 @@
             }
 
             video.play().catch(() => {
-                // 若瀏覽器擋有聲自動播放，自動靜音起播並提示
                 video.muted = true;
                 cfg.feedMuted = true;
                 overlay.querySelector('#p91-feed-mute').textContent = '🔇 靜音';
                 video.play().catch(() => {});
             });
 
-            // 預先解析下一部的串流網址，切換更順暢
             if (idx + 1 < feedItems.length) {
                 resolveVideoStreamUrl(feedItems[idx + 1]).catch(() => {});
             }
 
-            // 快滑到底部時自動載入下一頁並擴充抖音清單
             if (idx >= feedItems.length - 2 && cfg.infiniteScroll && !infDone) {
                 loadNextPage().then((hasMore) => {
                     if (hasMore && feedOpen) {
@@ -2213,18 +2304,18 @@
             track.classList.remove('dragging');
             track.style.transform = `translate3d(0, -${feedIndex * 100}%, 0)`;
             counterEl.textContent = `${feedIndex + 1} / ${feedItems.length}`;
+            syncBottomDockToItem(feedItems[feedIndex]);
             activateSlide(feedIndex);
         };
 
-        // 觸控手勢：上下滑換片 + 左右橫滑快轉（上下微調倍率）
         let tStartX = 0;
         let tStartY = 0;
-        let gestureMode = null; // null | 'vertical' | 'horizontal'
+        let gestureMode = null;
         let scrubStartTime = 0;
         let lastTapTs = 0;
 
         track.addEventListener('touchstart', (e) => {
-            if (e.touches.length !== 1 || e.target.closest('.p91-feed-range')) return;
+            if (e.touches.length !== 1) return;
             tStartX = e.touches[0].clientX;
             tStartY = e.touches[0].clientY;
             gestureMode = null;
@@ -2233,7 +2324,7 @@
         }, { passive: true });
 
         track.addEventListener('touchmove', (e) => {
-            if (e.touches.length !== 1 || !gestureMode && e.target.closest('.p91-feed-range')) return;
+            if (e.touches.length !== 1) return;
             const dx = e.touches[0].clientX - tStartX;
             const dy = e.touches[0].clientY - tStartY;
 
@@ -2251,7 +2342,6 @@
             } else if (gestureMode === 'horizontal') {
                 const curVideo = track.children[feedIndex]?.querySelector('video');
                 if (curVideo && Number.isFinite(curVideo.duration) && curVideo.duration > 0) {
-                    // 橫滑時上下移動可動態調整快轉倍率 (1x / 2x / 4x)
                     const absY = Math.abs(dy);
                     const mult = absY > 90 ? 4 : (absY > 40 ? 2 : 1);
                     const deltaSec = Math.round((dx / Math.max(240, window.innerWidth)) * 90 * mult);
@@ -2289,7 +2379,6 @@
                     }
                 }
             } else if (Math.hypot(dx, dy) < 10 && !e.target.closest('button, input')) {
-                // 單擊播放/暫停、雙擊進退 10 秒
                 const now = Date.now();
                 const curSlide = track.children[feedIndex];
                 const curVideo = curSlide?.querySelector('video');
@@ -2322,7 +2411,6 @@
             gestureMode = null;
         }, { passive: true });
 
-        // 電腦滑鼠滾輪支援
         let wheelLock = false;
         overlay.addEventListener('wheel', (e) => {
             if (drawerEl.classList.contains('open')) return;
@@ -2334,7 +2422,6 @@
             else if (e.deltaY < 0 && feedIndex > 0) goToSlide(feedIndex - 1);
         }, { passive: false });
 
-        // 頂部與右下角按鈕事件
         overlay.querySelector('#p91-feed-close').addEventListener('click', closeFeedMode);
 
         overlay.querySelector('#p91-feed-clock').addEventListener('click', (e) => {
@@ -2414,7 +2501,6 @@
     document.addEventListener('keydown', (e) => {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
 
-        // 抖音模式鍵盤快捷鍵
         if (feedOpen) {
             const track = document.getElementById('p91-feed-track');
             const curVideo = track?.children[feedIndex]?.querySelector('video');
@@ -2447,7 +2533,6 @@
             return;
         }
 
-        // 一般播放頁快捷鍵
         const video = document.querySelector('#player_one video, .video-js video, video');
         if (!video) return;
 
