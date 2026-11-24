@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MissAV 多片單番號比對標註工具
 // @namespace    http://tampermonkey.net/
-// @version      8.5
+// @version      8.6
 // @description  多片單獨立規則、即時監聽站內收藏自動同步、番號前綴統計排行、多版本去重、變動追蹤、隨機抽片、書籤筆記與分類紀錄
 // @match        https://missav.ws/*
 // @grant        GM_setValue
