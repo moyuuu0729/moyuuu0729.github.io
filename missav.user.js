@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MissAV 多片單番號比對標註工具
 // @namespace    http://tampermonkey.net/
-// @version      8.0
+// @version      8.1
 // @description  多片單獨立規則、即時監聽站內收藏自動同步、番號前綴統計排行、多版本去重、變動追蹤、隨機抽片、書籤筆記與分類紀錄
 // @match        https://missav.ws/*
 // @grant        GM_setValue
@@ -266,6 +266,9 @@
 
         /* ================= 單片播放頁：時間點書籤與筆記區塊 ================= */
         #missav-pl-note-widget {
+            position: static !important;
+            z-index: auto !important;
+            clear: both !important;
             margin: 12px 0 !important;
             padding: 12px 14px !important;
             background: #18181b !important;
@@ -2965,9 +2968,48 @@
             </div>
         `;
 
-        const anchor = h1.parentElement && h1.parentElement.tagName !== 'MAIN' && h1.parentElement.tagName !== 'BODY'
-            ? h1.parentElement
-            : h1;
+        const isSafeBlock = (el) => {
+            if (!el || el.nodeType !== 1) return false;
+            if (['BODY', 'HTML', 'MAIN', 'HEADER', 'FOOTER', 'NAV'].includes(el.tagName)) return false;
+            if (el.querySelector('video, iframe, aside, nav, header, footer')) return false;
+            if (countUniqueVideoCodes(el) >= 3) return false;
+            if (el.getBoundingClientRect().height > 800) return false;
+            return true;
+        };
+
+        // 1. 往上跳出同時包住標題、片單按鈕與展開選單的互動容器（Alpine / Livewire 區塊）
+        let anchor = h1;
+        while (anchor.parentElement && isSafeBlock(anchor.parentElement)) {
+            anchor = anchor.parentElement;
+        }
+
+        // 2. 若片單按鈕列或點擊後展開的片單選項是緊接在後的兄弟節點，一併往後略過
+        let skipped = 0;
+        while (skipped < 4 && anchor.nextElementSibling) {
+            const next = anchor.nextElementSibling;
+            if (!isSafeBlock(next)) break;
+
+            const textPreview = (next.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+            const attrPreview = [
+                next.getAttribute('x-data') || '',
+                next.getAttribute('x-show') || '',
+                next.getAttribute('wire:id') || '',
+                next.getAttribute('class') || ''
+            ].join(' ');
+
+            const isActionOrPlaylistSibling =
+                next.hasAttribute('x-show') ||
+                next.hasAttribute('x-data') ||
+                next.hasAttribute('wire:id') ||
+                Boolean(next.querySelector('[x-show], [wire\\:click], input[type="checkbox"], form')) ||
+                /playlist|片單|片单|收藏|清單|清单|save/i.test(`${attrPreview} ${textPreview}`) ||
+                (Boolean(next.querySelector('button')) && textPreview.length < 160);
+
+            if (!isActionOrPlaylistSibling) break;
+            anchor = next;
+            skipped++;
+        }
+
         anchor.insertAdjacentElement('afterend', widget);
 
         const bmListEl = widget.querySelector('#missav-pl-bm-list');
