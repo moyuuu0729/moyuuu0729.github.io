@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         91Porn 全能增強：去廣告 / 極簡列表 / 無限滾動 / 抖音模式 / 播放器強化
 // @namespace    https://91porn.com/
-// @version      1.5.0
+// @version      1.6.0
 // @description  徹底去除 91Porn 播放器與頁面廣告、封面零變形(內嵌添加時間)＋標題＋查看人數、滑到底部自動載入下一頁、抖音上下滑動連刷模式與播放器強化。
 // @match        *://*.91porn.com/*
 // @match        *://91porn.com/*
@@ -24,10 +24,10 @@
     const DEFAULT_CFG = {
         darkMode: true,
         cleanGrid: true,
-        minimalCard: true,     // true = 僅留封面(內嵌添加時間) + 標題 + 查看人數
-        infiniteScroll: true,  // true = 滑到底部自動載入下一頁
-        gridCols: 0,           // 0 = 自動依螢幕寬度 (手機2欄 / 電腦4欄)，或指定 2 / 3 / 4
-        watchedMode: 'dim',    // 'badge' | 'dim' | 'hide'
+        minimalCard: true,
+        infiniteScroll: true,
+        gridCols: 0,
+        watchedMode: 'dim',
         blockAds: true,
         autoWidePlayer: true,
         playbackRate: 1.0,
@@ -492,9 +492,8 @@
         #p91-feed-overlay {
             position: fixed;
             inset: 0;
-            width: 100vw;
-            height: 100vh;
-            height: 100dvh;
+            width: 100%;
+            height: 100%;
             z-index: 2147483644;
             background: #050608;
             color: #f3f4f6;
@@ -528,6 +527,7 @@
             justify-content: center;
             background: #050608;
             overflow: hidden;
+            padding-bottom: 136px;
         }
         .p91-feed-poster {
             position: absolute;
@@ -535,7 +535,7 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
-            opacity: 0.5;
+            opacity: 0.45;
             pointer-events: none;
             z-index: 1;
         }
@@ -544,16 +544,20 @@
             z-index: 2;
             width: 100%;
             height: 100%;
+            max-height: 100%;
             object-fit: contain;
             background: transparent;
         }
         .p91-feed-status {
             position: absolute;
-            z-index: 5;
+            top: 42%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 6;
             padding: 8px 16px;
             border-radius: 999px;
-            background: rgba(15, 17, 23, 0.85);
-            border: 1px solid rgba(167, 139, 250, 0.45);
+            background: rgba(15, 17, 23, 0.88);
+            border: 1px solid rgba(167, 139, 250, 0.5);
             color: #f3f4f6;
             font-size: 13px;
             font-weight: 700;
@@ -563,25 +567,27 @@
         }
         .p91-feed-center-icon {
             position: absolute;
+            top: 42%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.8);
             z-index: 8;
-            width: 64px;
-            height: 64px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
-            background: rgba(15, 17, 23, 0.68);
-            border: 1px solid rgba(255, 255, 255, 0.24);
+            background: rgba(15, 17, 23, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.25);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 26px;
+            font-size: 24px;
             color: #fff;
             opacity: 0;
-            transform: scale(0.8);
             pointer-events: none;
             transition: opacity 0.18s ease, transform 0.18s ease;
         }
         .p91-feed-center-icon.show {
             opacity: 1;
-            transform: scale(1);
+            transform: translate(-50%, -50%) scale(1);
         }
 
         /* 抖音模式頂部工具列 */
@@ -604,9 +610,9 @@
             pointer-events: auto;
         }
         .p91-fbtn {
-            padding: 6px 11px;
+            padding: 6px 10px;
             border-radius: 999px;
-            background: rgba(15, 17, 23, 0.72);
+            background: rgba(15, 17, 23, 0.78);
             border: 1px solid rgba(255, 255, 255, 0.18);
             color: #f3f4f6;
             font-size: 12px;
@@ -615,72 +621,49 @@
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
             font-variant-numeric: tabular-nums;
+            line-height: 1.2;
         }
         .p91-fbtn:active {
             transform: scale(0.95);
         }
 
-        /* 右下角全螢幕按鈕（避開底部進度條） */
-        #p91-feed-fs-btn {
-            position: fixed;
-            right: 12px;
-            bottom: calc(82px + env(safe-area-inset-bottom, 0px));
-            z-index: 32;
-            padding: 7px 12px;
-            border-radius: 999px;
-            background: rgba(15, 17, 23, 0.76);
-            border: 1px solid rgba(255, 255, 255, 0.22);
-            color: #fff;
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-        }
-
-        /* 抖音模式固定底部資訊與進度條（不隨滑動跑位） */
+        /* 抖音模式底部固定面板（標題 + 進度條 + 控制欄位整齊對齊） */
         #p91-feed-bottom-dock {
             position: fixed;
             left: 0;
             right: 0;
             bottom: 0;
-            z-index: 25;
-            padding: 26px 14px calc(12px + env(safe-area-inset-bottom, 0px));
-            background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.5) 68%, transparent 100%);
+            z-index: 28;
+            padding: 16px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+            background: linear-gradient(to top, rgba(6, 8, 12, 0.96) 0%, rgba(6, 8, 12, 0.82) 72%, transparent 100%);
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            pointer-events: none;
+            gap: 7px;
+            pointer-events: auto;
         }
         #p91-feed-meta {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
             gap: 8px;
-            font-size: 12px;
+            font-size: 11.5px;
             font-weight: 700;
             color: #cbd5e1;
-            padding-right: 92px;
         }
         #p91-feed-title {
-            font-size: 14px;
+            font-size: 13.5px;
             font-weight: 700;
             color: #ffffff;
-            line-height: 1.4;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
+            line-height: 1.35;
+            white-space: nowrap;
             overflow: hidden;
-            padding-right: 92px;
-            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+            text-overflow: ellipsis;
         }
         .p91-feed-scrub-row {
             display: flex;
             align-items: center;
             gap: 8px;
             width: 100%;
-            pointer-events: auto;
         }
         #p91-feed-time {
             flex-shrink: 0;
@@ -697,18 +680,56 @@
             height: 6px;
             accent-color: #ec4899;
             cursor: pointer;
+            margin: 0;
+        }
+        .p91-feed-ctrl-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .p91-feed-ctrl-row::-webkit-scrollbar {
+            display: none;
+        }
+        .p91-feed-ctrl-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+        .p91-fcbtn {
+            padding: 5px 9px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(255, 255, 255, 0.08);
+            color: #f3f4f6;
+            font-size: 11.5px;
+            font-weight: 700;
+            cursor: pointer;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .p91-fcbtn:active {
+            transform: scale(0.95);
+        }
+        .p91-fcbtn.accent {
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            border-color: transparent;
+            color: #fff;
         }
 
         /* 抖音模式手勢快轉 HUD */
         #p91-feed-hud {
             position: fixed;
-            top: 46%;
+            top: 44%;
             left: 50%;
             transform: translate(-50%, -50%);
             z-index: 35;
             padding: 10px 18px;
             border-radius: 999px;
-            background: rgba(15, 17, 23, 0.88);
+            background: rgba(15, 17, 23, 0.9);
             border: 1px solid rgba(236, 72, 153, 0.65);
             color: #fff;
             font-size: 15px;
@@ -727,7 +748,7 @@
             position: fixed;
             inset: 0;
             z-index: 40;
-            background: rgba(5, 6, 8, 0.86);
+            background: rgba(5, 6, 8, 0.88);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
             display: none;
@@ -1806,7 +1827,7 @@
         }
     }
 
-    // ==================== 7. 抖音模式（動態播放器串流解析＋固定底部進度條＋上下滑動） ====================
+    // ==================== 7. 抖音模式（直接解析 strencode2 / 串流網址＋對齊底部控制列） ====================
     function collectFeedItemsFromPage() {
         const list = [];
         const seen = new Set();
@@ -1871,114 +1892,74 @@
         });
     }
 
-    function extractMediaSrcFromDoc(doc, baseUrl) {
-        if (!doc) return '';
-        const candidates = Array.from(doc.querySelectorAll('#player_one video, .video-js video, video, source'));
-        for (const el of candidates) {
-            if (el.closest('.ima-ad-container, [class*="ima-"]')) continue;
-            const raw = el.currentSrc || el.src || el.getAttribute('src') || '';
-            if (!raw || AD_DOMAIN_RE.test(raw)) continue;
-            try {
-                return new URL(raw, baseUrl).href;
-            } catch {
-                return raw;
-            }
-        }
-        return '';
-    }
+    // 嘗試解碼常見的 strencode2 / Base64 編碼串流
+    function decodeEncodedStreamsFromHtml(html) {
+        const found = [];
 
-    // 在抖音覆蓋層後方（z-index: 1）載入真實播放頁，讓頁面 JS 正常解碼出影片串流
-    async function resolveStreamViaSandboxFrame(url, onStatus) {
-        return new Promise((resolve) => {
-            const ifr = document.createElement('iframe');
-            ifr.style.cssText = 'position:fixed;left:0;top:0;width:480px;height:270px;z-index:1;opacity:0.01;pointer-events:none;border:none;';
-            ifr.src = url;
-            document.body.appendChild(ifr);
-
-            let finished = false;
-            const cleanup = (foundUrl) => {
-                if (finished) return;
-                finished = true;
-                clearInterval(pollTimer);
-                clearTimeout(timeoutTimer);
-                try {
-                    const doc = ifr.contentDocument;
-                    doc?.querySelectorAll('video').forEach((v) => {
-                        v.muted = true;
-                        v.pause();
-                    });
-                    ifr.src = 'about:blank';
-                    ifr.remove();
-                } catch {}
-                resolve(foundUrl || '');
-            };
-
-            let ticks = 0;
-            const pollTimer = setInterval(() => {
-                ticks++;
-                try {
-                    const doc = ifr.contentDocument;
-                    if (!doc) return;
-
-                    // 靜音並移除 iframe 內干擾元件
-                    doc.querySelectorAll('video').forEach((v) => {
-                        v.muted = true;
-                    });
-                    doc.querySelectorAll('iframe, ins, [class*="ima-"], [id*="ima_"]').forEach((n) => {
-                        if (n !== ifr) n.remove();
-                    });
-
-                    // 若播放器有播放按鈕且尚未產生影片，嘗試觸發一次
-                    if (ticks === 4) {
-                        const playBtn = doc.querySelector('.vjs-big-play-button, [class*="play-btn"]');
-                        if (playBtn && typeof playBtn.click === 'function') playBtn.click();
-                    }
-
-                    const found = extractMediaSrcFromDoc(doc, url);
-                    if (found) {
-                        cleanup(found);
-                    } else if (ticks === 8 && typeof onStatus === 'function') {
-                        onStatus('⏳ 正在等待播放器解碼串流...');
-                    }
-                } catch {}
-            }, 350);
-
-            const timeoutTimer = setTimeout(() => cleanup(''), 11000);
+        // 1. 直接匹配 mp4 / m3u8 網址
+        const directMatches = html.match(/https?:\/\/[^"'\\\s<>]+\.(?:mp4|m3u8)(?:\?[^"'\\\s<>]*)?/gi) || [];
+        directMatches.forEach((u) => {
+            const clean = u.replace(/\\u002F/gi, '/').replace(/\\\//g, '/');
+            if (!AD_DOMAIN_RE.test(clean)) found.push(clean);
         });
+
+        // 2. 匹配 strencode2("...") 參數
+        const encRegex = /strencode2\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
+        let m;
+        while ((m = encRegex.exec(html)) !== null) {
+            try {
+                const decoded = decodeURIComponent(atob(m[1]));
+                const srcMatch = decoded.match(/src=['"]([^'"]+)['"]/i) || decoded.match(/(https?:\/\/[^\s"'<>]+)/i);
+                if (srcMatch && srcMatch[1] && !AD_DOMAIN_RE.test(srcMatch[1])) {
+                    found.push(srcMatch[1]);
+                }
+            } catch {}
+        }
+
+        // 3. 匹配 Base64 編碼的 m3u8 / mp4 網址
+        const b64Regex = /(?:atob\(|["'])([A-Za-z0-9+/=]{24,})(?:["']|\))/g;
+        while ((m = b64Regex.exec(html)) !== null) {
+            try {
+                const raw = atob(m[1]);
+                const urlM = raw.match(/https?:\/\/[^\s"'<>]+\.(?:mp4|m3u8)(?:\?[^\s"'<>]*)?/i);
+                if (urlM && urlM[0] && !AD_DOMAIN_RE.test(urlM[0])) {
+                    found.push(urlM[0]);
+                }
+            } catch {}
+        }
+
+        return found;
     }
 
-    async function resolveVideoStreamUrl(item, onStatus) {
+    async function resolveVideoStreamUrl(item) {
         const cacheKey = item.vk || item.url;
         if (streamCache.has(cacheKey)) {
             return streamCache.get(cacheKey);
         }
 
-        // 1. 先嘗試直接從 HTML 擷取明確的 mp4 / m3u8 網址
         try {
             const res = await fetch(item.url, { credentials: 'include' });
-            if (res.ok) {
-                const html = await res.text();
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const directDom = extractMediaSrcFromDoc(doc, item.url);
-                if (directDom && !directDom.startsWith('blob:')) {
-                    streamCache.set(cacheKey, directDom);
-                    return directDom;
-                }
+            if (!res.ok) return '';
+            const html = await res.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
 
-                const mediaMatch = html.match(/https?:\/\/[^"'\\\s<>]+\.(?:mp4|m3u8)(?:\?[^"'\\\s<>]*)?/i);
-                if (mediaMatch && !AD_DOMAIN_RE.test(mediaMatch[0])) {
-                    streamCache.set(cacheKey, mediaMatch[0]);
-                    return mediaMatch[0];
-                }
+            const domEl = doc.querySelector('#player_one source[src], video source[src], video[src]');
+            const domSrc = domEl?.getAttribute('src') || '';
+            if (domSrc && !domSrc.startsWith('blob:') && !AD_DOMAIN_RE.test(domSrc)) {
+                const abs = new URL(domSrc, item.url).href;
+                streamCache.set(cacheKey, abs);
+                return abs;
+            }
+
+            const decodedList = decodeEncodedStreamsFromHtml(html);
+            if (decodedList.length > 0) {
+                const abs = new URL(decodedList[0], item.url).href;
+                streamCache.set(cacheKey, abs);
+                return abs;
             }
         } catch {}
 
-        // 2. 透過真實背景框架執行頁面 JS，取得加密/動態串流網址
-        const frameSrc = await resolveStreamViaSandboxFrame(item.url, onStatus);
-        if (frameSrc) {
-            streamCache.set(cacheKey, frameSrc);
-        }
-        return frameSrc;
+        return '';
     }
 
     async function attachStreamToVideo(videoEl, streamUrl, slideIdx) {
@@ -2056,20 +2037,29 @@
                     <span id="p91-feed-counter" class="p91-fbtn">1 / ${feedItems.length}</span>
                 </div>
                 <div class="p91-feed-top-group">
-                    <button type="button" id="p91-feed-speed" class="p91-fbtn">${cfg.playbackRate}x</button>
-                    <button type="button" id="p91-feed-mute" class="p91-fbtn">${cfg.feedMuted ? '🔇 靜音' : '🔊 有聲'}</button>
                     <button type="button" id="p91-feed-drawer-btn" class="p91-fbtn">☰ 選集</button>
                     <button type="button" id="p91-feed-clock" class="p91-fbtn" title="點擊切換顯示秒數">00:00</button>
                 </div>
             </div>
             <div id="p91-feed-track" class="p91-feed-track"></div>
-            <button type="button" id="p91-feed-fs-btn" title="切換全螢幕">⛶ 全螢幕</button>
             <div id="p91-feed-bottom-dock">
                 <div id="p91-feed-meta"></div>
                 <div id="p91-feed-title"></div>
                 <div class="p91-feed-scrub-row">
                     <input type="range" id="p91-feed-range" min="0" max="1000" value="0" />
                     <span id="p91-feed-time">00:00 / 00:00</span>
+                </div>
+                <div class="p91-feed-ctrl-row">
+                    <div class="p91-feed-ctrl-group">
+                        <button type="button" class="p91-fcbtn" data-fseek="-10">⏪ -10s</button>
+                        <button type="button" class="p91-fcbtn accent" id="p91-fc-play">⏯ 播放</button>
+                        <button type="button" class="p91-fcbtn" data-fseek="10">+10s ⏩</button>
+                    </div>
+                    <div class="p91-feed-ctrl-group">
+                        <button type="button" class="p91-fcbtn" id="p91-fc-speed">${cfg.playbackRate}x</button>
+                        <button type="button" class="p91-fcbtn" id="p91-fc-mute">${cfg.feedMuted ? '🔇 靜音' : '🔊 有聲'}</button>
+                        <button type="button" class="p91-fcbtn" id="p91-fc-fs">⛶ 全螢幕</button>
+                    </div>
                 </div>
             </div>
             <div id="p91-feed-hud"></div>
@@ -2104,6 +2094,7 @@
             if (item.duration) metaParts.push(`⏱ ${item.duration}`);
             metaEl.textContent = metaParts.join(' · ');
             titleEl.textContent = item.title || '';
+            titleEl.title = item.title || '';
             rangeEl.value = '0';
             timeEl.textContent = '00:00 / 00:00';
         };
@@ -2153,6 +2144,60 @@
         rangeEl.addEventListener('pointerup', (e) => {
             e.stopPropagation();
             commitScrub();
+        });
+
+        // 底部控制欄位事件
+        overlay.querySelectorAll('[data-fseek]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const sec = Number(btn.dataset.fseek);
+                const curVideo = track.children[feedIndex]?.querySelector('video');
+                if (curVideo && Number.isFinite(curVideo.duration)) {
+                    curVideo.currentTime = Math.max(0, Math.min(curVideo.duration, curVideo.currentTime + sec));
+                    hud.textContent = sec > 0 ? `⏩ +${sec}s` : `⏪ ${sec}s`;
+                    hud.classList.add('show');
+                    setTimeout(() => hud.classList.remove('show'), 600);
+                }
+            });
+        });
+
+        overlay.querySelector('#p91-fc-play').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const curVideo = track.children[feedIndex]?.querySelector('video');
+            if (!curVideo) return;
+            if (curVideo.paused) curVideo.play().catch(() => {});
+            else curVideo.pause();
+        });
+
+        overlay.querySelector('#p91-fc-speed').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
+            cfg.playbackRate = speeds[(speeds.indexOf(cfg.playbackRate) + 1) % speeds.length];
+            saveCfg();
+            e.target.textContent = `${cfg.playbackRate}x`;
+            const curVideo = track.children[feedIndex]?.querySelector('video');
+            if (curVideo) curVideo.playbackRate = cfg.playbackRate;
+        });
+
+        overlay.querySelector('#p91-fc-mute').addEventListener('click', (e) => {
+            e.stopPropagation();
+            cfg.feedMuted = !cfg.feedMuted;
+            saveCfg();
+            e.target.textContent = cfg.feedMuted ? '🔇 靜音' : '🔊 有聲';
+            const curVideo = track.children[feedIndex]?.querySelector('video');
+            if (curVideo) curVideo.muted = cfg.feedMuted;
+        });
+
+        overlay.querySelector('#p91-fc-fs').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => {});
+            } else if (overlay.requestFullscreen) {
+                overlay.requestFullscreen().catch(() => {});
+            } else {
+                const curVideo = track.children[feedIndex]?.querySelector('video');
+                if (curVideo?.webkitEnterFullscreen) curVideo.webkitEnterFullscreen();
+            }
         });
 
         const buildSlide = (item, idx) => {
@@ -2256,16 +2301,11 @@
             if (activeSlide.dataset.loaded !== '1') {
                 statusEl.textContent = '⏳ 正在解析影片串流...';
                 statusEl.style.display = 'block';
-                const streamUrl = await resolveVideoStreamUrl(item, (msg) => {
-                    if (feedOpen && idx === feedIndex) {
-                        statusEl.textContent = msg;
-                        statusEl.style.display = 'block';
-                    }
-                });
+                const streamUrl = await resolveVideoStreamUrl(item);
                 if (!feedOpen || idx !== feedIndex) return;
 
                 if (!streamUrl) {
-                    statusEl.textContent = '⚠️ 無法取得串流，請上滑看下一部';
+                    statusEl.textContent = '⚠️ 串流無法播放，請上滑看下一部';
                     statusEl.style.display = 'block';
                     return;
                 }
@@ -2276,7 +2316,7 @@
             video.play().catch(() => {
                 video.muted = true;
                 cfg.feedMuted = true;
-                overlay.querySelector('#p91-feed-mute').textContent = '🔇 靜音';
+                overlay.querySelector('#p91-fc-mute').textContent = '🔇 靜音';
                 video.play().catch(() => {});
             });
 
@@ -2430,40 +2470,12 @@
             updateFeedClockText();
         });
 
-        overlay.querySelector('#p91-feed-speed').addEventListener('click', (e) => {
-            const speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
-            cfg.playbackRate = speeds[(speeds.indexOf(cfg.playbackRate) + 1) % speeds.length];
-            saveCfg();
-            e.target.textContent = `${cfg.playbackRate}x`;
-            const curVideo = track.children[feedIndex]?.querySelector('video');
-            if (curVideo) curVideo.playbackRate = cfg.playbackRate;
-        });
-
-        overlay.querySelector('#p91-feed-mute').addEventListener('click', (e) => {
-            cfg.feedMuted = !cfg.feedMuted;
-            saveCfg();
-            e.target.textContent = cfg.feedMuted ? '🔇 靜音' : '🔊 有聲';
-            const curVideo = track.children[feedIndex]?.querySelector('video');
-            if (curVideo) curVideo.muted = cfg.feedMuted;
-        });
-
         overlay.querySelector('#p91-feed-drawer-btn').addEventListener('click', () => {
             renderDrawer();
             drawerEl.classList.add('open');
         });
         overlay.querySelector('#p91-drawer-close').addEventListener('click', () => {
             drawerEl.classList.remove('open');
-        });
-
-        overlay.querySelector('#p91-feed-fs-btn').addEventListener('click', () => {
-            if (document.fullscreenElement) {
-                document.exitFullscreen().catch(() => {});
-            } else if (overlay.requestFullscreen) {
-                overlay.requestFullscreen().catch(() => {});
-            } else {
-                const curVideo = track.children[feedIndex]?.querySelector('video');
-                if (curVideo?.webkitEnterFullscreen) curVideo.webkitEnterFullscreen();
-            }
         });
 
         startFeedClock();
