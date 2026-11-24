@@ -138,6 +138,44 @@
             color: #bbf7d0;
         }
 
+        /* 適用網站列 */
+        .sites-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px 8px;
+            margin: 0 0 12px;
+            font-size: 12.5px;
+            color: var(--muted);
+        }
+
+        .sites-label {
+            font-weight: 700;
+            color: #cbd5e1;
+            white-space: nowrap;
+        }
+
+        .site-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #bae6fd;
+            background: rgba(56, 189, 248, 0.12);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            text-decoration: none;
+            transition: background 0.14s ease, border-color 0.14s ease;
+        }
+
+        a.site-chip:hover {
+            background: rgba(56, 189, 248, 0.24);
+            border-color: rgba(56, 189, 248, 0.6);
+            color: #e0f2fe;
+        }
+
         .card-desc {
             margin: 0 0 16px;
             font-size: 14px;
@@ -431,13 +469,17 @@
 
     <script>
         // ==================== 腳本設定區（只需改這裡） ====================
-        // file 填寫相對於 index.html 的 .user.js 檔名，頁面會自動讀取檔案內的 @version
+        // file 填寫相對於 index.html 的 .user.js 檔名，頁面會自動讀取 @version 與 @match
+        // sites 可寫網域字串 'www.erome.com'、自訂物件 { name: 'Erome', url: 'https://www.erome.com/' }，或留空 [] 自動抓取 @match
         const SCRIPTS = [
             {
                 file: 'erome-plus.user.js',
                 title: '瀏覽體驗全能增強腳本',
                 tag: '手機 / 電腦通用',
                 fallbackVersion: '4.2.0',
+                sites: [
+                    { name: 'erome.com', url: 'https://www.erome.com/' },
+                ],
                 summary: '整合去廣告、抖音式上下滑動播放、封面點擊預覽、無段縮放多欄排版、斷點續刷與完整設定備份。',
                 features: [
                     '🎬 抖音模式＋九宮格縮圖抽屜',
@@ -457,6 +499,7 @@
                 title: '第二支腳本名稱',
                 tag: '工具類',
                 fallbackVersion: '1.0.0',
+                sites: [], // 留空會自動從腳本內的 @match 讀取
                 summary: '簡短介紹這支腳本的功能。',
                 features: [
                     '✨ 功能特色 1',
@@ -511,11 +554,80 @@
                 const m = code.match(new RegExp(`//\\s*@${tag}\\s+([^\\r\\n]+)`, 'i'));
                 return m ? m[1].trim() : '';
             };
+            const matches = [];
+            const matchRegex = /\/\/\s*@(?:match|include)\s+([^\r\n]+)/gi;
+            let m;
+            while ((m = matchRegex.exec(code)) !== null) {
+                if (m[1]) matches.push(m[1].trim());
+            }
             return {
                 name: getTag('name'),
                 version: getTag('version'),
                 description: getTag('description'),
+                matches,
             };
+        }
+
+        function normalizeSites(rawSites) {
+            if (!Array.isArray(rawSites)) return [];
+            const seen = new Set();
+            const result = [];
+
+            rawSites.forEach((entry) => {
+                if (!entry) return;
+                if (typeof entry === 'object' && entry.name) {
+                    const key = (entry.url || entry.name).toLowerCase();
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        result.push({ name: entry.name, url: entry.url || '' });
+                    }
+                    return;
+                }
+
+                const raw = String(entry).trim();
+                if (!raw) return;
+
+                // 處理 @match 樣式（如 https://www.erome.com/* 或 *://*.example.com/*）
+                const host = raw
+                    .replace(/^(?:\*|https?):\/\//i, '')
+                    .replace(/^\*\./, '')
+                    .replace(/\/.*$/, '')
+                    .trim();
+
+                if (!host || host === '*') {
+                    if (!seen.has('*')) {
+                        seen.add('*');
+                        result.push({ name: '所有網站', url: '' });
+                    }
+                    return;
+                }
+
+                const cleanKey = host.toLowerCase();
+                if (seen.has(cleanKey)) return;
+                seen.add(cleanKey);
+
+                const isValidDomain = host.includes('.') && !host.includes('*');
+                result.push({
+                    name: host,
+                    url: isValidDomain ? `https://${host}/` : '',
+                });
+            });
+
+            return result;
+        }
+
+        function renderSiteChipsHtml(sites) {
+            const normalized = normalizeSites(sites);
+            if (normalized.length === 0) {
+                return `<span class="sites-label">🌐 適用網站：</span><span>偵測中...</span>`;
+            }
+            const chips = normalized.map((s) => {
+                if (s.url) {
+                    return `<a class="site-chip" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.name)} ↗</a>`;
+                }
+                return `<span class="site-chip">${escapeHtml(s.name)}</span>`;
+            }).join('');
+            return `<span class="sites-label">🌐 適用網站：</span>${chips}`;
         }
 
         function buildFullUrl(relFile) {
@@ -562,6 +674,7 @@
 
             SCRIPTS.forEach((script, idx) => {
                 const fullUrl = buildFullUrl(script.file);
+                const hasManualSites = Array.isArray(script.sites) && script.sites.length > 0;
                 const card = document.createElement('article');
                 card.className = 'card';
                 card.innerHTML = `
@@ -571,6 +684,9 @@
                             <span class="badge version" id="ver-${idx}">v${escapeHtml(script.fallbackVersion || '1.0.0')}</span>
                             <span class="badge" id="status-${idx}">${escapeHtml(script.tag || 'UserScript')}</span>
                         </div>
+                    </div>
+                    <div class="sites-row" id="sites-${idx}">
+                        ${renderSiteChipsHtml(hasManualSites ? script.sites : [])}
                     </div>
                     <p class="card-desc">${escapeHtml(script.summary || '')}</p>
                     ${Array.isArray(script.features) && script.features.length ? `
@@ -596,7 +712,7 @@
                     openCodeModal(script);
                 });
 
-                // 背景自動抓取同目錄 .user.js 以即時同步最新版本號
+                // 背景自動抓取同目錄 .user.js 以即時同步最新版本號與適用網站
                 fetch(`${script.file}?t=${Date.now()}`, { cache: 'no-store' })
                     .then((res) => (res.ok ? res.text() : Promise.reject(res.status)))
                     .then((code) => {
@@ -604,15 +720,27 @@
                         const meta = parseUserscriptMeta(code);
                         const verEl = document.getElementById(`ver-${idx}`);
                         const statusEl = document.getElementById(`status-${idx}`);
+                        const sitesEl = document.getElementById(`sites-${idx}`);
+
                         if (verEl && meta.version) verEl.textContent = `v${meta.version}`;
                         if (statusEl) {
                             statusEl.textContent = '● 檔案正常可安裝';
                             statusEl.classList.add('live-ok');
                         }
+                        // 若未手動設定 sites，自動把 @match / @include 顯示成可點擊的適用網站標籤
+                        if (sitesEl && !hasManualSites) {
+                            sitesEl.innerHTML = meta.matches.length
+                                ? renderSiteChipsHtml(meta.matches)
+                                : `<span class="sites-label">🌐 適用網站：</span><span>未指定</span>`;
+                        }
                     })
                     .catch(() => {
                         const statusEl = document.getElementById(`status-${idx}`);
+                        const sitesEl = document.getElementById(`sites-${idx}`);
                         if (statusEl) statusEl.textContent = '⚠️ 找不到檔案';
+                        if (sitesEl && !hasManualSites) {
+                            sitesEl.innerHTML = `<span class="sites-label">🌐 適用網站：</span><span>無法讀取</span>`;
+                        }
                     });
             });
         }
