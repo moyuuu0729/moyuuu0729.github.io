@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         MissAV 多片單番號比對標註工具
 // @namespace    http://tampermonkey.net/
-// @version      8.3
+// @version      8.4
 // @description  多片單獨立規則、即時監聽站內收藏自動同步、番號前綴統計排行、多版本去重、變動追蹤、隨機抽片、書籤筆記與分類紀錄
 // @match        https://missav.ws/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        unsafeWindow
-// @run-at       document-idle
+// @run-at       document-start
 // @updateURL    https://moyuuu0729.github.io/missav.user.js
 // @downloadURL  https://moyuuu0729.github.io/missav.user.js
 // ==/UserScript==
@@ -2827,10 +2827,13 @@
         const links = document.querySelectorAll('a[href]');
 
         links.forEach(a => {
-            if (a.closest('header, nav, footer, #missav-pl-note-widget')) return;
+            if (a.closest('header, nav, footer, .plyr, #player, #missav-pl-note-widget, #missav-pl-panel, .missav-pl-overlay')) return;
             const img = a.querySelector('img');
             if (!img) return;
             if (!isVideoUrl(a.href)) return;
+
+            const imgRect = img.getBoundingClientRect();
+            if (imgRect.width > 0 && (imgRect.width < 110 || imgRect.height < 65)) return;
 
             const code =
                 extractCode(new URL(a.href).pathname) ||
@@ -2844,7 +2847,11 @@
                 card.classList.add('missav-pl-card-scanned');
             }
 
-            const container = img.parentElement || a;
+            // 避開 <picture> 等無尺寸內聯包裝元素，確保按鈕準確錨定在縮圖外框右上角
+            let container = img.parentElement || a;
+            if (container && container.tagName === 'PICTURE') {
+                container = container.parentElement || a;
+            }
             const cs = getComputedStyle(container);
             if (cs.position === 'static') {
                 container.style.position = 'relative';
@@ -2979,7 +2986,10 @@
         widget.innerHTML = `
             <div class="missav-pl-note-head">
                 <span class="missav-pl-note-title">📝 時間點書籤與簡短筆記（${escapeHtml(pageCode)}）</span>
-                <span id="missav-pl-note-updated" style="font-size:11px;color:#a1a1aa;"></span>
+                <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span id="missav-pl-note-updated" style="font-size:11px;color:#a1a1aa;"></span>
+                    <button type="button" id="missav-pl-widget-skip" class="missav-pl-note-btn"></button>
+                </div>
             </div>
             <div class="missav-pl-bm-list" id="missav-pl-bm-list"></div>
             <div class="missav-pl-note-row">
@@ -3040,6 +3050,22 @@
 
         const bmListEl = widget.querySelector('#missav-pl-bm-list');
         const updatedEl = widget.querySelector('#missav-pl-note-updated');
+
+        const widgetSkipBtn = widget.querySelector('#missav-pl-widget-skip');
+        const syncWidgetSkipBtn = () => {
+            if (!widgetSkipBtn) return;
+            const skipped = skippedCodes.has(pageCode);
+            widgetSkipBtn.textContent = skipped ? '↩ 移出已略過' : '🚫 加入已略過';
+            widgetSkipBtn.style.setProperty('background', skipped ? '#d97706' : '#3f3f46', 'important');
+        };
+        syncWidgetSkipBtn();
+        if (widgetSkipBtn) {
+            widgetSkipBtn.addEventListener('click', () => {
+                handleToggleSkip(pageCode);
+                syncWidgetSkipBtn();
+            });
+        }
+
         const timeInput = widget.querySelector('#missav-pl-bm-time');
         const labelInput = widget.querySelector('#missav-pl-bm-label');
         const noteTextEl = widget.querySelector('#missav-pl-note-text');
@@ -5039,23 +5065,155 @@
 
     // ================= 播放器廣告、透明遮罩與彈窗攔截 =================
     let lastAdToastTs = 0;
+    let adShieldUntil = 0;
 
     function notifyAdBlocked(msg) {
         const now = Date.now();
-        if (now - lastAdToastTs > 4000) {
+        if (now - lastAdToastTs > 3500) {
             lastAdToastTs = now;
             showToast(msg);
         }
     }
 
+    function isExternalAdUrl(rawUrl) {
+        const urlStr = String(rawUrl || '').trim();
+        if (!urlStr || urlStr === 'about:blank' || urlStr.startsWith('javascript:')) return true;
+        if (urlStr.startsWith('#') || urlStr.startsWith('blob:') || urlStr.startsWith('data:')) return false;
+        try {
+            return new URL(urlStr, location.origin).origin !== location.origin;
+        } catch {
+            return true;
+        }
+    }
+
+    // 在 document-start 階段搶先攔截 window.open、動態建立外連 <a> 點擊與播放器點擊劫持
+    function installEarlyAdHooks() {
+        const pageWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+
+        [window, pageWin].forEach((win) => {
+            if (!win) return;
+
+            if (typeof win.open === 'function' && !win.__missavPlOpenHooked) {
+                const origOpen = win.open.bind(win);
+                win.open = function (url, target, features) {
+                    if (uiPrefs.blockPlayerAds && (Date.now() < adShieldUntil || isExternalAdUrl(url))) {
+                        notifyAdBlocked('🛡️ 已攔截播放器廣告彈窗');
+                        return null;
+                    }
+                    return origOpen(url, target, features);
+                };
+                win.__missavPlOpenHooked = true;
+            }
+
+            if (win.HTMLAnchorElement && !win.HTMLAnchorElement.prototype.__missavPlClickHooked) {
+                const origAnchorClick = win.HTMLAnchorElement.prototype.click;
+                win.HTMLAnchorElement.prototype.click = function (...args) {
+                    if (uiPrefs.blockPlayerAds && (this.target === '_blank' || Date.now() < adShieldUntil) && isExternalAdUrl(this.href)) {
+                        notifyAdBlocked('🛡️ 已攔截背景廣告跳轉');
+                        return;
+                    }
+                    return origAnchorClick.apply(this, args);
+                };
+                win.HTMLAnchorElement.prototype.__missavPlClickHooked = true;
+            }
+        });
+
+        // 捕捉點擊播放器瞬間：啟動短時護盾、清除透明遮罩並阻止事件冒泡至 document/window 廣告監聽器
+        const guardPlayerInteraction = (e) => {
+            if (!uiPrefs.blockPlayerAds) return;
+            const target = e.target;
+            if (!target || target.nodeType !== 1) return;
+            if (target.closest('#missav-pl-panel, .missav-pl-overlay, #missav-pl-note-widget')) return;
+
+            const playerBox = target.closest('.plyr, #player');
+            if (!playerBox) return;
+
+            adShieldUntil = Date.now() + 2500;
+
+            // 檢查是否點到蓋在播放器上方的外部廣告連結或透明遮罩層
+            const badLink = target.closest('a[href]');
+            if (badLink && isExternalAdUrl(badLink.getAttribute('href'))) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                badLink.remove();
+                notifyAdBlocked('🛡️ 已清除播放器廣告連結');
+                return;
+            }
+
+            const isLegitPlayerPart =
+                target.tagName === 'VIDEO' ||
+                Boolean(target.closest('.plyr__controls, .plyr__menu, .plyr__control--overlaid, .plyr__poster, .plyr__captions'));
+
+            if (!isLegitPlayerPart) {
+                const cs = getComputedStyle(target);
+                const rect = target.getBoundingClientRect();
+                const pRect = playerBox.getBoundingClientRect();
+                const coversPlayer = pRect.width > 0 && rect.width >= pRect.width * 0.6 && rect.height >= pRect.height * 0.6;
+                if (coversPlayer && (cs.position === 'absolute' || cs.position === 'fixed')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    target.remove();
+                    const v = playerBox.querySelector('video');
+                    if (v && v.paused) v.play().catch(() => {});
+                    notifyAdBlocked('🛡️ 已清除播放器透明廣告遮罩');
+                }
+            }
+        };
+
+        ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((evt) => {
+            window.addEventListener(evt, guardPlayerInteraction, true);
+        });
+    }
+
+    function bindPlayerBubbleShield() {
+        if (!uiPrefs.blockPlayerAds) return;
+        document.querySelectorAll('.plyr, #player').forEach((box) => {
+            if (box.dataset.missavBubbleShielded === '1') return;
+            box.dataset.missavBubbleShielded = '1';
+            // 在事件完成播放器內部控制後、冒泡到 body/document/window 廣告監聽器前截斷
+            ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach((evt) => {
+                box.addEventListener(evt, (e) => {
+                    if (uiPrefs.blockPlayerAds) {
+                        adShieldUntil = Date.now() + 2500;
+                        e.stopPropagation();
+                    }
+                }, false);
+            });
+        });
+    }
+
     function cleanPlayerAds() {
-        if (!uiPrefs.blockPlayerAds || !isVideoUrl(location.href)) return;
+        if (!uiPrefs.blockPlayerAds) return;
+        bindPlayerBubbleShield();
+
+        // 1. 清除掛在 body 上的全螢幕透明點擊劫持層（常見於第一次點擊網頁彈出廣告）
+        document.querySelectorAll('body > div, body > a, body > aside, body > section').forEach((el) => {
+            if (el.id === 'missav-pl-panel' || el.id === 'missav-pl-toast' || el.classList.contains('missav-pl-overlay')) return;
+            if (el.querySelector('video, .plyr, h1, main')) return;
+
+            const cs = getComputedStyle(el);
+            if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden') return;
+            const z = parseInt(cs.zIndex, 10) || 0;
+            if (z < 50) return;
+
+            const rect = el.getBoundingClientRect();
+            if (rect.width >= window.innerWidth * 0.8 && rect.height >= window.innerHeight * 0.8) {
+                const bg = cs.backgroundColor || '';
+                const isTransparent = cs.opacity === '0' || Number(cs.opacity) <= 0.08 || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)';
+                if (isTransparent && (el.textContent || '').trim() === '') {
+                    el.remove();
+                }
+            }
+        });
+
+        if (!isVideoUrl(location.href)) return;
 
         const plyrRoot = document.querySelector('.plyr') || document.querySelector('#player');
         const mainVideo = plyrRoot?.querySelector('video') || document.querySelector('video');
         if (!plyrRoot && !mainVideo) return;
 
-        // 取得包住主播放器的外層容器（排除標題與筆記區塊）
         let wrapper = plyrRoot || mainVideo.parentElement;
         if (wrapper && wrapper.parentElement && !wrapper.parentElement.querySelector('h1, #missav-pl-note-widget')) {
             const pRect = wrapper.parentElement.getBoundingClientRect();
@@ -5066,28 +5224,17 @@
         }
         if (!wrapper) return;
 
-        // 1. 移除播放器區域內的廣告 iframe 與外部廣告超連結
-        wrapper.querySelectorAll('iframe, ins, a[target="_blank"]').forEach((el) => {
+        // 2. 移除播放器區域內的廣告 iframe 與外部廣告連結
+        wrapper.querySelectorAll('iframe, ins, a[target="_blank"], a[href]').forEach((el) => {
             if (el.closest('#missav-pl-panel, .missav-pl-overlay, #missav-pl-note-widget')) return;
             if (el.tagName === 'A') {
-                const href = el.getAttribute('href') || '';
-                if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
-                    el.remove();
-                    return;
-                }
-                try {
-                    if (new URL(href, location.origin).origin !== location.origin) {
-                        el.remove();
-                    }
-                } catch {
-                    el.remove();
-                }
+                if (isExternalAdUrl(el.getAttribute('href'))) el.remove();
             } else {
                 el.remove();
             }
         });
 
-        // 2. 移除蓋在播放器上方、非 Plyr 原生控制列的透明點擊遮罩與暫停廣告浮層
+        // 3. 移除蓋在播放器上的透明防點擊層與暫停廣告浮層
         const wRect = wrapper.getBoundingClientRect();
         wrapper.querySelectorAll('div, section, aside').forEach((el) => {
             if (el === wrapper || el === plyrRoot) return;
@@ -5105,28 +5252,23 @@
             if (rect.width < 100 || rect.height < 60) return;
 
             const isTransparentShield =
-                (cs.opacity === '0' || cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') &&
+                (Number(cs.opacity) <= 0.08 || cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') &&
                 (el.textContent || '').trim() === '' &&
                 !el.querySelector('img, svg, button');
 
             const hasExternalAdContent = Array.from(el.querySelectorAll('a[href], img[src]')).some((node) => {
                 const rawUrl = node.getAttribute('href') || node.getAttribute('src') || '';
-                if (!rawUrl || rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) return false;
-                try {
-                    return new URL(rawUrl, location.origin).origin !== location.origin;
-                } catch {
-                    return false;
-                }
+                return isExternalAdUrl(rawUrl);
             });
 
-            const coversMostOfPlayer = wRect.width > 0 && rect.width >= wRect.width * 0.75 && rect.height >= wRect.height * 0.75;
+            const coversMostOfPlayer = wRect.width > 0 && rect.width >= wRect.width * 0.7 && rect.height >= wRect.height * 0.7;
 
             if (isTransparentShield || hasExternalAdContent || (coversMostOfPlayer && !cls.includes('plyr__'))) {
                 el.remove();
             }
         });
 
-        // 3. 若出現非 blob 串流的片頭短廣告 <video>，自動靜音快轉略過
+        // 4. 若出現非 blob 串流的片頭短廣告 <video>，自動靜音快轉略過
         wrapper.querySelectorAll('video').forEach((v) => {
             const src = v.currentSrc || v.src || '';
             if (src && !src.startsWith('blob:') && Number.isFinite(v.duration) && v.duration > 0 && v.duration <= 45) {
@@ -5138,79 +5280,29 @@
         });
     }
 
-    function installPlayerAdBlocker() {
-        const pageWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+    // ================= 初始化（分階段：document-start 掛鉤 + DOM 就緒掛載 UI） =================
+    applyUiPrefs();
+    installEarlyAdHooks();
 
-        // 攔截點擊播放器觸發的外部廣告彈窗 (window.open)
-        if (pageWin && typeof pageWin.open === 'function' && !pageWin.__missavPlOpenHooked) {
-            const origOpen = pageWin.open.bind(pageWin);
-            pageWin.open = function (url, target, features) {
-                if (uiPrefs.blockPlayerAds) {
-                    const urlStr = String(url || '').trim();
-                    let isAdPopup = !urlStr || urlStr === 'about:blank' || urlStr.startsWith('javascript:');
-                    if (!isAdPopup) {
-                        try {
-                            isAdPopup = new URL(urlStr, location.origin).origin !== location.origin;
-                        } catch {
-                            isAdPopup = true;
-                        }
-                    }
-                    if (isAdPopup) {
-                        notifyAdBlocked('🛡️ 已攔截播放器廣告彈窗');
-                        return null;
-                    }
-                }
-                return origOpen(url, target, features);
-            };
-            pageWin.__missavPlOpenHooked = true;
-        }
-
-        // 捕捉點擊播放器區域時綁在透明容器上的劫持事件
-        document.addEventListener('click', (e) => {
-            if (!uiPrefs.blockPlayerAds || !isVideoUrl(location.href)) return;
-            const target = e.target;
-            if (!target || target.nodeType !== 1) return;
-            if (target.closest('#missav-pl-panel, .missav-pl-overlay, #missav-pl-note-widget, .plyr__controls')) return;
-
-            const inPlayer = target.closest('.plyr, #player');
-            if (!inPlayer) return;
-
-            const badLink = target.closest('a[href]');
-            if (badLink) {
-                const href = badLink.getAttribute('href') || '';
-                let isExternal = !href || href.startsWith('#') || href.startsWith('javascript:');
-                if (!isExternal) {
-                    try {
-                        isExternal = new URL(href, location.origin).origin !== location.origin;
-                    } catch {
-                        isExternal = true;
-                    }
-                }
-                if (isExternal) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    badLink.remove();
-                    notifyAdBlocked('🛡️ 已阻擋播放器廣告跳轉');
-                }
-            }
-        }, true);
-
+    function bootOnDomReady() {
+        loadAllSavedCodes();
+        createFloatingPanel();
+        markPageVideos(false);
+        injectVideoNoteWidget();
         cleanPlayerAds();
-        setInterval(cleanPlayerAds, 1500);
+        installNativePlaylistWatcher();
+
+        observer.observe(document.body, { childList: true, subtree: true });
+        setInterval(cleanPlayerAds, 1200);
+
+        setTimeout(() => {
+            autoCheckAndUpdatePlaylists({ forceCheck: false, reason: 'interval' });
+        }, 1500);
     }
 
-    // 初始化
-    applyUiPrefs();
-    loadAllSavedCodes();
-    createFloatingPanel();
-    markPageVideos(false);
-    injectVideoNoteWidget();
-    installPlayerAdBlocker();
-    installNativePlaylistWatcher();
-    observer.observe(document.body, { childList: true, subtree: true });
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootOnDomReady, { once: true });
+    } else {
+        bootOnDomReady();
+    }
 
-    setTimeout(() => {
-        autoCheckAndUpdatePlaylists({ forceCheck: false, reason: 'interval' });
-    }, 1500);
-})();
