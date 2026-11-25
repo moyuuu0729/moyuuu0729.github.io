@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         91Porn 全能增強：去廣告 / 極簡列表 / 無限滾動 / 抖音模式 / 播放器強化
 // @namespace    https://91porn.com/
-// @version      1.6.1
+// @version      1.6.2
 // @description  徹底去除 91Porn 播放器與頁面廣告、封面零變形(內嵌添加時間)＋標題＋查看人數、滑到底部自動載入下一頁、抖音上下滑動連刷模式與播放器強化。
 // @match        *://*.91porn.com/*
 // @match        *://91porn.com/*
@@ -1805,7 +1805,7 @@
         }
     }
 
-    // ==================== 7. 抖音模式（含完整空值防呆與串流解碼） ====================
+    // ==================== 7. 抖音模式（含完整空值防呆與 URL 百分比/Base64 串流解碼） ====================
     function collectFeedItemsFromPage() {
         const list = [];
         const seen = new Set();
@@ -1814,7 +1814,7 @@
         if (curVk && location.pathname.includes('view_video.php')) {
             const curVideo = document.querySelector('#player_one video, .video-js video, video');
             const curSrc = curVideo?.currentSrc || curVideo?.src || '';
-            if (curSrc && !AD_DOMAIN_RE.test(curSrc)) {
+            if (curSrc && !AD_DOMAIN_RE.test(curSrc) && !/ad-i18n-dsp|preroll/i.test(curSrc)) {
                 streamCache.set(curVk, curSrc);
             }
             const h1 = document.querySelector('h4, h3, .login_register_header, title');
@@ -1872,33 +1872,47 @@
 
     function decodeEncodedStreamsFromHtml(html) {
         const found = [];
+        const pushIfValid = (raw) => {
+            if (!raw) return;
+            const clean = String(raw)
+                .replace(/\\u002F/gi, '/')
+                .replace(/\\\//g, '/')
+                .replace(/&amp;/g, '&')
+                .trim();
+            if (/^https?:\/\/.+/i.test(clean) && !AD_DOMAIN_RE.test(clean) && !/ad-i18n-dsp|preroll/i.test(clean) && !found.includes(clean)) {
+                found.push(clean);
+            }
+        };
 
-        const directMatches = html.match(/https?:\/\/[^"'\\\s<>]+\.(?:mp4|m3u8)(?:\?[^"'\\\s<>]*)?/gi) || [];
-        directMatches.forEach((u) => {
-            const clean = u.replace(/\\u002F/gi, '/').replace(/\\\//g, '/');
-            if (!AD_DOMAIN_RE.test(clean)) found.push(clean);
-        });
-
+        // 1. 解析 strencode2(...) 內層字串（支援 URL 百分比編碼 %3c...%3e 與 Base64）
         const encRegex = /strencode2\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
         let m;
         while ((m = encRegex.exec(html)) !== null) {
+            const inner = m[1];
             try {
-                const decoded = decodeURIComponent(atob(m[1]));
-                const srcMatch = decoded.match(/src=['"]([^'"]+)['"]/i) || decoded.match(/(https?:\/\/[^\s"'<>]+)/i);
-                if (srcMatch && srcMatch[1] && !AD_DOMAIN_RE.test(srcMatch[1])) {
-                    found.push(srcMatch[1]);
-                }
+                const uriDec = decodeURIComponent(inner);
+                const srcMatch = uriDec.match(/src=['"]([^'"]+)['"]/i) || uriDec.match(/(https?:\/\/[^\s"'<>]+)/i);
+                if (srcMatch && srcMatch[1]) pushIfValid(srcMatch[1]);
+            } catch {}
+
+            try {
+                const b64Dec = decodeURIComponent(atob(inner));
+                const srcMatch = b64Dec.match(/src=['"]([^'"]+)['"]/i) || b64Dec.match(/(https?:\/\/[^\s"'<>]+)/i);
+                if (srcMatch && srcMatch[1]) pushIfValid(srcMatch[1]);
             } catch {}
         }
 
+        // 2. 直接比對 HTML 內的 mp4 / m3u8 網址（排除前貼片廣告）
+        const directMatches = html.match(/https?:\/\/[^"'\\\s<>]+\.(?:mp4|m3u8)(?:\?[^"'\\\s<>]*)?/gi) || [];
+        directMatches.forEach((u) => pushIfValid(u));
+
+        // 3. 嘗試其他 Base64 編碼片段
         const b64Regex = /(?:atob\(|["'])([A-Za-z0-9+/=]{24,})(?:["']|\))/g;
         while ((m = b64Regex.exec(html)) !== null) {
             try {
                 const raw = atob(m[1]);
                 const urlM = raw.match(/https?:\/\/[^\s"'<>]+\.(?:mp4|m3u8)(?:\?[^\s"'<>]*)?/i);
-                if (urlM && urlM[0] && !AD_DOMAIN_RE.test(urlM[0])) {
-                    found.push(urlM[0]);
-                }
+                if (urlM && urlM[0]) pushIfValid(urlM[0]);
             } catch {}
         }
 
@@ -1919,7 +1933,7 @@
 
             const domEl = doc.querySelector('#player_one source[src], video source[src], video[src]');
             const domSrc = domEl?.getAttribute('src') || '';
-            if (domSrc && !domSrc.startsWith('blob:') && !AD_DOMAIN_RE.test(domSrc)) {
+            if (domSrc && !domSrc.startsWith('blob:') && !AD_DOMAIN_RE.test(domSrc) && !/ad-i18n-dsp|preroll/i.test(domSrc)) {
                 const abs = new URL(domSrc, item.url).href;
                 streamCache.set(cacheKey, abs);
                 return abs;
