@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         91Porn 全能增強：去廣告 / 極簡列表 / 無限滾動 / 抖音模式 / 播放器強化
 // @namespace    https://91porn.com/
-// @version      1.6.2
+// @version      1.6.3
 // @description  徹底去除 91Porn 播放器與頁面廣告、封面零變形(內嵌添加時間)＋標題＋查看人數、滑到底部自動載入下一頁、抖音上下滑動連刷模式與播放器強化。
 // @match        *://*.91porn.com/*
 // @match        *://91porn.com/*
@@ -455,6 +455,9 @@
         #p91-seek-hud.show {
             opacity: 1;
         }
+        html[data-p91-feed-active="true"] #p91-seek-hud {
+            display: none !important;
+        }
         #p91-player-clock {
             position: absolute;
             top: 10px;
@@ -512,6 +515,7 @@
             justify-content: center;
             background: #050608;
             overflow: hidden;
+            padding-top: 52px;
             padding-bottom: 136px;
         }
         .p91-feed-poster {
@@ -532,6 +536,14 @@
             max-height: 100%;
             object-fit: contain;
             background: transparent;
+            pointer-events: none;
+        }
+        .p91-feed-video::-webkit-media-controls,
+        .p91-feed-video::-webkit-media-controls-enclosure,
+        .p91-feed-video::-webkit-media-controls-panel {
+            display: none !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
         .p91-feed-status {
             position: absolute;
@@ -711,7 +723,7 @@
             z-index: 35;
             padding: 10px 18px;
             border-radius: 999px;
-            background: rgba(15, 17, 23, 0.9);
+            background: rgba(15, 17, 23, 0.92);
             border: 1px solid rgba(236, 72, 153, 0.65);
             color: #fff;
             font-size: 15px;
@@ -1067,7 +1079,7 @@
         });
 
         const guardPlayerClick = (e) => {
-            if (!cfg.blockAds) return;
+            if (!cfg.blockAds || feedOpen) return;
             const target = e.target;
             if (!target || target.nodeType !== 1) return;
             if (target.closest('#p91-float-panel, #p91-picker-bar, #p91-player-bar, #p91-infinite-bar, #p91-feed-overlay')) return;
@@ -1168,7 +1180,7 @@
                 player.dataset.p91BubbleShield = '1';
                 ['click', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach((evt) => {
                     player.addEventListener(evt, (e) => {
-                        if (cfg.blockAds) {
+                        if (cfg.blockAds && !feedOpen) {
                             adShieldUntil = Date.now() + 3000;
                             e.stopPropagation();
                         }
@@ -1701,7 +1713,7 @@
             let swiping = false;
 
             playerWrap.addEventListener('touchstart', (e) => {
-                if (e.touches.length !== 1 || e.target.closest('.vjs-control-bar')) return;
+                if (feedOpen || e.touches.length !== 1 || e.target.closest('.vjs-control-bar')) return;
                 touchStartX = e.touches[0].clientX;
                 touchStartY = e.touches[0].clientY;
                 startTime = video.currentTime || 0;
@@ -1709,7 +1721,7 @@
             }, { passive: true });
 
             playerWrap.addEventListener('touchmove', (e) => {
-                if (e.touches.length !== 1 || !Number.isFinite(video.duration)) return;
+                if (feedOpen || e.touches.length !== 1 || !Number.isFinite(video.duration)) return;
                 const dx = e.touches[0].clientX - touchStartX;
                 const dy = e.touches[0].clientY - touchStartY;
                 if (!swiping && Math.abs(dx) > 18 && Math.abs(dx) > Math.abs(dy) * 1.3) {
@@ -1727,6 +1739,7 @@
                 if (!swiping) return;
                 swiping = false;
                 hud.classList.remove('show');
+                if (feedOpen) return;
                 const dx = (e.changedTouches[0]?.clientX || touchStartX) - touchStartX;
                 const deltaSec = Math.round((dx / Math.max(240, playerWrap.clientWidth)) * 90);
                 if (Math.abs(deltaSec) >= 2 && Number.isFinite(video.duration)) {
@@ -1805,7 +1818,7 @@
         }
     }
 
-    // ==================== 7. 抖音模式（含完整空值防呆與 URL 百分比/Base64 串流解碼） ====================
+    // ==================== 7. 抖音模式 ====================
     function collectFeedItemsFromPage() {
         const list = [];
         const seen = new Set();
@@ -1884,7 +1897,6 @@
             }
         };
 
-        // 1. 解析 strencode2(...) 內層字串（支援 URL 百分比編碼 %3c...%3e 與 Base64）
         const encRegex = /strencode2\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
         let m;
         while ((m = encRegex.exec(html)) !== null) {
@@ -1902,11 +1914,9 @@
             } catch {}
         }
 
-        // 2. 直接比對 HTML 內的 mp4 / m3u8 網址（排除前貼片廣告）
         const directMatches = html.match(/https?:\/\/[^"'\\\s<>]+\.(?:mp4|m3u8)(?:\?[^"'\\\s<>]*)?/gi) || [];
         directMatches.forEach((u) => pushIfValid(u));
 
-        // 3. 嘗試其他 Base64 編碼片段
         const b64Regex = /(?:atob\(|["'])([A-Za-z0-9+/=]{24,})(?:["']|\))/g;
         while ((m = b64Regex.exec(html)) !== null) {
             try {
@@ -1952,6 +1962,9 @@
 
     async function attachStreamToVideo(videoEl, streamUrl, slideIdx) {
         if (!videoEl || !streamUrl) return;
+        videoEl.controls = false;
+        videoEl.removeAttribute('controls');
+
         if (hlsInstances.has(slideIdx)) {
             try { hlsInstances.get(slideIdx).destroy(); } catch {}
             hlsInstances.delete(slideIdx);
@@ -2015,7 +2028,9 @@
 
         feedOpen = true;
         feedIndex = Math.max(0, Math.min(startIdx, feedItems.length - 1));
+        document.documentElement.dataset.p91FeedActive = 'true';
         document.documentElement.style.overflow = 'hidden';
+        document.getElementById('p91-seek-hud')?.classList.remove('show');
 
         const overlay = document.createElement('div');
         overlay.id = 'p91-feed-overlay';
@@ -2074,6 +2089,16 @@
 
         let scrubbing = false;
         let activeProgressTimer = null;
+        let hudHideTimer = null;
+
+        const showFeedHud = (text, durationMs = 650) => {
+            hud.textContent = text;
+            hud.classList.add('show');
+            clearTimeout(hudHideTimer);
+            if (durationMs > 0) {
+                hudHideTimer = setTimeout(() => hud.classList.remove('show'), durationMs);
+            }
+        };
 
         const getCurrentVideo = () => track?.children?.[feedIndex]?.querySelector('video') || null;
 
@@ -2144,9 +2169,7 @@
                 const curVideo = getCurrentVideo();
                 if (!curVideo || !Number.isFinite(curVideo.duration)) return;
                 curVideo.currentTime = Math.max(0, Math.min(curVideo.duration, curVideo.currentTime + sec));
-                hud.textContent = sec > 0 ? `⏩ +${sec}s` : `⏪ ${sec}s`;
-                hud.classList.add('show');
-                setTimeout(() => hud.classList.remove('show'), 600);
+                showFeedHud(sec > 0 ? `⏩ +${sec}s` : `⏪ ${sec}s`, 600);
             });
         });
 
@@ -2205,10 +2228,18 @@
             const statusEl = slide.querySelector('.p91-feed-status');
 
             if (video) {
+                video.controls = false;
+                video.removeAttribute('controls');
                 video.muted = Boolean(cfg.feedMuted);
                 video.playbackRate = Number(cfg.playbackRate) || 1.0;
 
+                video.addEventListener('loadedmetadata', () => {
+                    video.controls = false;
+                    video.removeAttribute('controls');
+                });
                 video.addEventListener('playing', () => {
+                    video.controls = false;
+                    video.removeAttribute('controls');
                     if (statusEl) statusEl.style.display = 'none';
                 });
                 video.addEventListener('waiting', () => {
@@ -2263,6 +2294,7 @@
             const item = feedItems[idx];
             if (!item) return;
 
+            hud.classList.remove('show');
             syncBottomDockToItem(item);
             if (item.vk) markVideoAsWatched(item.vk);
             enhanceVideoCards();
@@ -2270,6 +2302,8 @@
             Array.from(track.children).forEach((sl, i) => {
                 const v = sl.querySelector('video');
                 if (!v) return;
+                v.controls = false;
+                v.removeAttribute('controls');
                 if (i !== idx) {
                     try { v.pause(); } catch {}
                     if (Math.abs(i - idx) > 2 && v.src) {
@@ -2292,6 +2326,8 @@
                 return;
             }
 
+            video.controls = false;
+            video.removeAttribute('controls');
             bindProgressSync(video);
             video.muted = Boolean(cfg.feedMuted);
             video.playbackRate = Number(cfg.playbackRate) || 1.0;
@@ -2403,8 +2439,7 @@
                     const mult = absY > 90 ? 4 : (absY > 40 ? 2 : 1);
                     const deltaSec = Math.round((dx / Math.max(240, window.innerWidth)) * 90 * mult);
                     const targetSec = Math.max(0, Math.min(curVideo.duration, scrubStartTime + deltaSec));
-                    hud.textContent = `${deltaSec >= 0 ? '⏩ +' : '⏪ '}${deltaSec}s (${formatSec(targetSec)}) [${mult}x]`;
-                    hud.classList.add('show');
+                    showFeedHud(`${deltaSec >= 0 ? '⏩ +' : '⏪ '}${deltaSec}s (${formatSec(targetSec)}) [${mult}x]`, 0);
                 }
             }
         }, { passive: true });
@@ -2446,9 +2481,7 @@
                         if (Number.isFinite(curVideo.duration)) {
                             curVideo.currentTime = Math.max(0, Math.min(curVideo.duration, curVideo.currentTime + skip));
                         }
-                        hud.textContent = skip > 0 ? '⏩ +10s' : '⏪ -10s';
-                        hud.classList.add('show');
-                        setTimeout(() => hud.classList.remove('show'), 650);
+                        showFeedHud(skip > 0 ? '⏩ +10s' : '⏪ -10s', 650);
                     } else {
                         if (curVideo.paused) {
                             curVideo.play().catch(() => {});
@@ -2503,6 +2536,7 @@
         if (!feedOpen) return;
         stopFeedClock();
         feedOpen = false;
+        delete document.documentElement.dataset.p91FeedActive;
         document.documentElement.style.overflow = '';
 
         if (document.fullscreenElement) {
