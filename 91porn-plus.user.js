@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         91Porn 全能增強：去廣告 / 極簡列表 / 無限滾動 / 抖音模式 / 播放器強化
 // @namespace    https://91porn.com/
-// @version      1.6.4
+// @version      1.6.5
 // @description  徹底去除 91Porn 播放器與頁面廣告、封面零變形(內嵌添加時間)＋標題＋查看人數、滑到底部自動載入下一頁、抖音上下滑動連刷模式與播放器強化。
 // @match        *://*.91porn.com/*
 // @match        *://91porn.com/*
@@ -106,7 +106,8 @@
         html[data-p91-ads="true"] [class*="pause-ad"],
         html[data-p91-ads="true"] [id*="pause-ad"],
         html[data-p91-ads="true"] .ima-ad-container,
-        html[data-p91-ads="true"] [class*="ima-"],
+        html[data-p91-ads="true"] [class^="ima-"],
+        html[data-p91-ads="true"] [class*=" ima-"],
         html[data-p91-ads="true"] [id*="ima_"],
         html[data-p91-ads="true"] .vjs-ad-control-bar,
         html[data-p91-ads="true"] .vjs-overlay,
@@ -1115,6 +1116,8 @@
                     Boolean(target.closest('.vjs-control-bar, .vjs-big-play-button, .vjs-menu, #p91-player-clock'));
 
                 if (!isLegitControl) {
+                    const cls = String(target.className || '');
+                    if (/\bvjs-/.test(cls) && !/\bvjs-(?:ad-|overlay)/.test(cls)) return;
                     const cs = getComputedStyle(target);
                     const rect = target.getBoundingClientRect();
                     const pRect = playerBox.getBoundingClientRect();
@@ -1147,12 +1150,29 @@
     }
 
     // ==================== 3. DOM 廣告清理 ====================
-    function applyCustomHiddenRules() {
-        document.querySelectorAll('.p91-user-hidden').forEach((el) => el.classList.remove('p91-user-hidden'));
+    function isAdVideoElement(v, player) {
+        if (!v) return false;
+        if (v.closest('.ima-ad-container, [class^="ima-"], [class*=" ima-"], [class*="vast" i], [id*="vast" i]')) {
+            return true;
+        }
+        const src = String(v.currentSrc || v.src || '');
+        if (src && !src.startsWith('blob:') && (AD_DOMAIN_RE.test(src) || /(?:preroll|midroll|ad-i18n-dsp|vast|vpaid|advert)/i.test(src))) {
+            return true;
+        }
+        if (player && (player.classList.contains('vjs-ad-playing') || player.classList.contains('vjs-ad-loading'))) {
+            return true;
+        }
+        return false;
+    }
+
+    function applyCustomHiddenRules(forceReset = false) {
+        if (forceReset) {
+            document.querySelectorAll('.p91-user-hidden').forEach((el) => el.classList.remove('p91-user-hidden'));
+        }
         cfg.customHiddenSelectors.forEach((sel) => {
             try {
                 document.querySelectorAll(sel).forEach((el) => {
-                    if (!el.closest('#p91-float-panel, #p91-picker-bar, #p91-feed-overlay')) {
+                    if (!el.classList.contains('p91-user-hidden') && !el.closest('#p91-float-panel, #p91-picker-bar, #p91-feed-overlay')) {
                         el.classList.add('p91-user-hidden');
                     }
                 });
@@ -1163,30 +1183,43 @@
     function cleanAdsOnPage() {
         if (!cfg.blockAds || feedOpen || document.hidden) return;
 
-        document.querySelectorAll('body > div, body > a, body > aside, body > section').forEach((el) => {
-            if (el.id?.startsWith('p91-')) return;
-            if (el.querySelector('video, #player_one, .navbar, .container')) return;
-            const cs = getComputedStyle(el);
-            if (cs.position === 'fixed') {
-                const z = parseInt(cs.zIndex, 10) || 0;
-                const rect = el.getBoundingClientRect();
-                if (z >= 40 && (rect.width >= window.innerWidth * 0.65 || rect.height <= 140)) {
-                    el.remove();
-                }
-            }
-        });
-
-        document.querySelectorAll('.well, .row > div, center, [align="center"]').forEach((box) => {
-            if (box.closest('#p91-float-panel, #p91-picker-bar, #p91-player-bar, #p91-infinite-bar, #p91-feed-overlay')) return;
-            if (box.querySelector('video, #player_one, a[href*="view_video.php"], a[href*="uprofile.php"], .pagination, .paging, .pagingnav')) return;
-
-            const links = Array.from(box.querySelectorAll('a[href]'));
-            if (links.length > 0 && links.every((a) => isExternalAdUrl(a.href))) {
-                box.classList.add('p91-ad-hidden');
-            }
-        });
-
         const player = document.querySelector('#player_one, .video-js');
+        const mainVideo = player?.querySelector('video') || null;
+        const inAdMode = Boolean(
+            player && (
+                player.classList.contains('vjs-ad-playing') ||
+                player.classList.contains('vjs-ad-loading') ||
+                player.querySelector('.ima-ad-container, [class*="vast" i]')
+            )
+        );
+        const smoothlyPlayingMain = Boolean(mainVideo && !mainVideo.paused && !inAdMode && !isAdVideoElement(mainVideo, player));
+
+        if (!smoothlyPlayingMain) {
+            document.querySelectorAll('body > div, body > a, body > aside, body > section').forEach((el) => {
+                if (el.id?.startsWith('p91-')) return;
+                if (el.querySelector('video, #player_one, .navbar, .container')) return;
+                const cs = getComputedStyle(el);
+                if (cs.position === 'fixed') {
+                    const z = parseInt(cs.zIndex, 10) || 0;
+                    const rect = el.getBoundingClientRect();
+                    if (z >= 40 && (rect.width >= window.innerWidth * 0.65 || rect.height <= 140)) {
+                        el.remove();
+                    }
+                }
+            });
+
+            document.querySelectorAll('.well, .row > div, center, [align="center"]').forEach((box) => {
+                if (box.classList.contains('p91-ad-hidden')) return;
+                if (box.closest('#p91-float-panel, #p91-picker-bar, #p91-player-bar, #p91-infinite-bar, #p91-feed-overlay')) return;
+                if (box.querySelector('video, #player_one, a[href*="view_video.php"], a[href*="uprofile.php"], .pagination, .paging, .pagingnav')) return;
+
+                const links = Array.from(box.querySelectorAll('a[href]'));
+                if (links.length > 0 && links.every((a) => isExternalAdUrl(a.href))) {
+                    box.classList.add('p91-ad-hidden');
+                }
+            });
+        }
+
         if (player) {
             if (player.dataset.p91BubbleShield !== '1') {
                 player.dataset.p91BubbleShield = '1';
@@ -1200,52 +1233,91 @@
                 });
             }
 
-            player.querySelectorAll('iframe, ins, .ima-ad-container, [class*="ima-"], [id*="ima_"], [class*="pause-ad"], [id*="pause-ad"], a[href]').forEach((el) => {
+            player.querySelectorAll('iframe, ins, [class*="pause-ad"], [id*="pause-ad"], a[href]').forEach((el) => {
                 if (el.id?.startsWith('p91-')) return;
                 if (el.tagName === 'A' && !isExternalAdUrl(el.href)) return;
                 el.remove();
             });
 
-            const pRect = player.getBoundingClientRect();
-            player.querySelectorAll('div, span').forEach((el) => {
-                if (el.id?.startsWith('p91-')) return;
-                if (el.closest('.vjs-control-bar, .vjs-menu')) return;
-                if (el.querySelector('video, .vjs-control-bar')) return;
-                const cls = String(el.className || '');
-                if (/^vjs-(?:poster|text-track|loading-spinner|big-play-button|error-display|modal-dialog)/.test(cls)) return;
+            if (!smoothlyPlayingMain) {
+                const pRect = player.getBoundingClientRect();
+                player.querySelectorAll('div, span').forEach((el) => {
+                    if (el.id?.startsWith('p91-')) return;
+                    if (el.closest('.vjs-control-bar, .vjs-menu, .ima-ad-container')) return;
+                    if (el.querySelector('video, .vjs-control-bar')) return;
+                    const cls = String(el.className || '');
+                    if (/\bvjs-/.test(cls) && !/\bvjs-(?:ad-|overlay)/.test(cls)) return;
+                    if (/\bima-/.test(cls)) return;
 
-                const cs = getComputedStyle(el);
-                if (cs.position !== 'absolute' && cs.position !== 'fixed') return;
-                const rect = el.getBoundingClientRect();
-                const covers = pRect.width > 0 && rect.width >= pRect.width * 0.6 && rect.height >= pRect.height * 0.6;
-                const isTransparent = Number(cs.opacity) <= 0.1 || cs.backgroundColor === 'transparent' || cs.backgroundColor === 'rgba(0, 0, 0, 0)';
-                if (covers && (isTransparent || !cls.includes('vjs-'))) {
-                    el.remove();
-                }
-            });
+                    const cs = getComputedStyle(el);
+                    if (cs.position !== 'absolute' && cs.position !== 'fixed') return;
+                    const rect = el.getBoundingClientRect();
+                    const covers = pRect.width > 0 && rect.width >= pRect.width * 0.6 && rect.height >= pRect.height * 0.6;
+                    const isTransparent = Number(cs.opacity) <= 0.1 || cs.backgroundColor === 'transparent' || cs.backgroundColor === 'rgba(0, 0, 0, 0)';
+                    if (covers && (isTransparent || !cls.includes('vjs-'))) {
+                        el.remove();
+                    }
+                });
+            }
 
             player.querySelectorAll('video').forEach((v) => {
-                const isAdVideo = Boolean(v.closest('.ima-ad-container, [class*="ima-"]')) ||
-                    (Number.isFinite(v.duration) && v.duration > 0 && v.duration <= 45 && !(v.currentSrc || v.src || '').includes('.m3u8'));
-                if (isAdVideo) {
-                    v.muted = true;
-                    if (Number.isFinite(v.duration) && v.currentTime < v.duration - 0.1) {
+                if (isAdVideoElement(v, player)) {
+                    if (!v.muted) {
+                        v.dataset.p91AdMuted = '1';
+                        v.muted = true;
+                    }
+                    const now = Date.now();
+                    if (
+                        Number.isFinite(v.duration) &&
+                        v.duration > 0 &&
+                        !v.ended &&
+                        v.currentTime < v.duration - 0.15 &&
+                        now - Number(v.dataset.p91LastAdSkip || 0) > 600
+                    ) {
+                        v.dataset.p91LastAdSkip = String(now);
                         v.currentTime = v.duration;
                     }
+                } else if (v.dataset.p91AdMuted === '1') {
+                    v.muted = false;
+                    delete v.dataset.p91AdMuted;
                 }
             });
-            player.querySelectorAll('[class*="skip" i], [id*="skip" i]').forEach((btn) => {
-                if (typeof btn.click === 'function') btn.click();
-            });
+
+            if (inAdMode) {
+                const adSkipSelectors = [
+                    '.vast-skip-button',
+                    '.videoAdUiSkipButton',
+                    '[class*="skip-ad" i]',
+                    '[class*="ad-skip" i]',
+                    '[class*="skipad" i]',
+                    '[id*="skip-ad" i]',
+                    '[id*="ad-skip" i]',
+                    '.ima-ad-container [class*="skip" i]',
+                    '[class*="vast" i] [class*="skip" i]'
+                ].join(', ');
+                player.querySelectorAll(adSkipSelectors).forEach((btn) => {
+                    if (btn.closest('.vjs-control-bar, .vjs-menu')) return;
+                    const cls = String(btn.className || '');
+                    if (/vjs-skip-(?:backward|forward)|seek/i.test(cls)) return;
+                    if (btn.disabled || btn.classList.contains('vjs-hidden')) return;
+                    const rect = btn.getBoundingClientRect();
+                    if (rect.width <= 0 || rect.height <= 0) return;
+                    const now = Date.now();
+                    if (now - Number(btn.dataset.p91SkipTs || 0) < 1200) return;
+                    btn.dataset.p91SkipTs = String(now);
+                    if (typeof btn.click === 'function') btn.click();
+                });
+            }
 
             const mainCol = player.closest('[class*="col-md-8"], [class*="col-lg-8"], .col-sm-8');
             if (mainCol && mainCol.parentElement) {
                 Array.from(mainCol.parentElement.children).forEach((sibling) => {
-                    if (sibling !== mainCol && !sibling.querySelector('video')) {
+                    if (sibling !== mainCol && !sibling.classList.contains('p91-ad-hidden') && !sibling.querySelector('video')) {
                         sibling.classList.add('p91-ad-hidden');
                     }
                 });
-                if (cfg.autoWidePlayer) {
+                if (cfg.autoWidePlayer && mainCol.dataset.p91WideApplied !== '1') {
+                    mainCol.dataset.p91WideApplied = '1';
                     mainCol.style.width = '100%';
                     mainCol.style.maxWidth = '100%';
                     mainCol.style.flex = '0 0 100%';
@@ -1668,6 +1740,7 @@
 
             const tryResume = () => {
                 if (!vk || video.dataset.p91Resumed === '1') return;
+                if (isAdVideoElement(video, playerWrap)) return;
                 const savedSec = Number(progressMap[vk] || 0);
                 if (savedSec > 8 && Number.isFinite(video.duration) && savedSec < video.duration - 10) {
                     video.currentTime = savedSec;
@@ -1680,7 +1753,7 @@
 
             let lastSaveTs = 0;
             video.addEventListener('timeupdate', () => {
-                if (feedOpen) return;
+                if (feedOpen || isAdVideoElement(video, playerWrap)) return;
                 if (!vk || !Number.isFinite(video.duration) || video.duration <= 0) return;
                 const now = Date.now();
                 if (now - lastSaveTs < 3000) return;
@@ -1705,7 +1778,8 @@
                 const hh = String(d.getHours()).padStart(2, '0');
                 const mm = String(d.getMinutes()).padStart(2, '0');
                 const ss = String(d.getSeconds()).padStart(2, '0');
-                clock.textContent = showSec ? `${hh}:${mm}:${ss}` : `${hh}:${mm}`;
+                const txt = showSec ? `${hh}:${mm}:${ss}` : `${hh}:${mm}`;
+                if (clock.textContent !== txt) clock.textContent = txt;
             };
             clock.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1842,7 +1916,7 @@
         if (curVk && location.pathname.includes('view_video.php')) {
             const curVideo = document.querySelector('#player_one video, .video-js video, video');
             const curSrc = curVideo?.currentSrc || curVideo?.src || '';
-            if (curSrc && !AD_DOMAIN_RE.test(curSrc) && !/ad-i18n-dsp|preroll/i.test(curSrc)) {
+            if (curSrc && !curSrc.startsWith('blob:') && !AD_DOMAIN_RE.test(curSrc) && !/ad-i18n-dsp|preroll/i.test(curSrc)) {
                 streamCache.set(curVk, curSrc);
             }
             const h1 = document.querySelector('h4, h3, .login_register_header, title');
@@ -2763,7 +2837,7 @@
                 if (sel && !cfg.customHiddenSelectors.includes(sel)) {
                     cfg.customHiddenSelectors.push(sel);
                     saveCfg();
-                    applyCustomHiddenRules();
+                    applyCustomHiddenRules(true);
                     showToast('✅ 已永久隱藏該區塊');
                 }
                 pickerLockedEl = null;
@@ -2776,7 +2850,7 @@
                 if (cfg.customHiddenSelectors.length === 0) return;
                 cfg.customHiddenSelectors.pop();
                 saveCfg();
-                applyCustomHiddenRules();
+                applyCustomHiddenRules(true);
                 showToast('↩️ 已復原上一筆隱藏規則');
             });
 
@@ -2983,7 +3057,7 @@
         enhancePlayerPage();
         applyCustomHiddenRules();
 
-        setInterval(cleanAdsOnPage, 1200);
+        setInterval(cleanAdsOnPage, 2000);
 
         let scrollThrottle = null;
         const onScrollOrTouch = () => {
@@ -2997,7 +3071,14 @@
         window.addEventListener('touchmove', onScrollOrTouch, { passive: true });
 
         let timer = null;
-        const obs = new MutationObserver(() => {
+        const ignoredMutSelector = '#p91-float-panel, #p91-picker-bar, #p91-player-bar, #p91-player-clock, #p91-seek-hud, #p91-toast, #p91-feed-overlay, .vjs-control-bar, .vjs-loading-spinner, .vjs-text-track-display';
+        const obs = new MutationObserver((mutations) => {
+            if (feedOpen) return;
+            const relevant = mutations.some((m) => {
+                const el = m.target?.nodeType === 1 ? m.target : m.target?.parentElement;
+                return el && !el.closest(ignoredMutSelector);
+            });
+            if (!relevant) return;
             clearTimeout(timer);
             timer = setTimeout(() => {
                 cleanAdsOnPage();
@@ -3005,7 +3086,7 @@
                 setupInfiniteScroll();
                 enhancePlayerPage();
                 applyCustomHiddenRules();
-            }, 250);
+            }, 300);
         });
         obs.observe(document.body, { childList: true, subtree: true });
         window.addEventListener('resize', applyRootFlags);
