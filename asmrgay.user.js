@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Asmrgay 自訂強化播放器 (進退5秒 + 大標題列表 + 子資料夾掃描)
+// @name         Asmrgay 自訂強化播放器 (進退5秒 + 大標題列表 + 子資料夾斷點續掃 + 搜尋連播)
 // @namespace    https://www.asmrgay.com/
-// @version      2.0.0
-// @description  為 asmrgay.com 打造手機與電腦皆適用的自訂音訊播放器，支援一鍵遞迴掃描子資料夾音檔、進退5秒、完整多行標題大列表、倍速與睡眠定時。
+// @version      2.1.0
+// @description  為 asmrgay.com 打造手機與電腦皆適用的自訂音訊播放器，支援子資料夾斷點續掃與獨立儲存、搜尋相關度排序連播、進退5秒、完整多行標題大列表、倍速與睡眠定時。
 // @match        https://www.asmrgay.com/*
 // @match        https://asmrgay.com/*
 // @run-at       document-start
@@ -15,29 +15,47 @@
     'use strict';
 
     const STORAGE_KEY = 'asmrgay_custom_player_cfg_v2';
+    const DEEP_LIST_STORAGE_KEY = 'asmrgay_deep_playlist_v1';
+    const SCAN_STATE_STORAGE_KEY = 'asmrgay_scan_checkpoint_v1';
+
     const DEFAULT_CFG = {
         minimized: false,
         hideOriginal: false,
         loopMode: 'list', // 'list' | 'single' | 'none'
         playbackRate: 1.0,
-        customListSelector: ''
+        customListSelector: '',
+        listMode: 'page' // 'page' | 'deep'
     };
 
     const AUDIO_EXT_RE = /\.(mp3|wav|flac|m4a|ogg|aac|opus|webm)(\?.*)?$/i;
     const SKIP_EXT_RE = /\.(jpg|jpeg|png|gif|webp|bmp|svg|ico|txt|lrc|vtt|srt|pdf|zip|rar|7z|tar|gz|css|js|json|xml|mp4|mkv|avi|mov)(\?.*)?$/i;
 
     const SCAN_MAX_DEPTH = 6;
-    const SCAN_MAX_FOLDERS = 300;
+    const SCAN_BATCH_FOLDERS = 300; // 每次連掃上限，達上限自動暫停存檔可繼續掃
 
     let cfg = loadConfig();
     let currentMedia = null;
-    let playlist = []; // [{ title, folder, el, url, path, sign, resolvedUrl, resolvedAt, type: 'click'|'audio'|'alist'|'url', active }]
-    let currentIndex = -1;
+
+    // 兩份獨立清單：本頁列表 vs. 另外持久儲存的子資料夾掃描庫
+    let pagePlaylist = []; // [{ id, title, folder, el, type: 'click'|'audio', active }]
+    let deepPlaylist = []; // [{ id, title, folder, path, sign, url, type: 'alist'|'url' }]
+    let deepIdSet = new Set();
+
+    // 斷點續掃狀態：{ rootPath, engine: 'pending'|'alist'|'html', queue: [], visited: [], scannedFolders: 0, completed: false, updatedAt }
+    let scanState = null;
+
+    // 列表視圖與實際播放狀態
+    let listMode = cfg.listMode === 'deep' ? 'deep' : 'page';
+    let playingSource = 'page'; // 'page' | 'deep'
+    let currentTrackId = '';
+    // 搜尋連播佇列：{ source: 'page'|'deep', keyword: string, ids: string[] } | null
+    let searchPlayQueue = null;
+
     let isSeeking = false;
     let isPickingMode = false;
-    let isDeepScanned = false;
     let isScanning = false;
     let scanAbortCtrl = null;
+    let lastSaveTs = 0;
     let sleepTimerId = null;
     let sleepEndTime = 0;
     let lastUrl = location.href;
@@ -57,13 +75,135 @@
         } catch {}
     }
 
+    function makeTrackId(item, fallbackIdx = 0) {
+        if (item.type === 'alist' && item.path) return `alist:${item.path}`;
+        if (item.type === 'url' && item.url) return `url:${item.url}`;
+        const href = item.el && item.el.href ? item.el.href : '';
+        return `page:${item.type || 'click'}:${href || item.title || fallbackIdx}:${fallbackIdx}`;
+    }
+
+    function loadDeepStorage() {
+        try {
+            const rawList = JSON.parse(localStorage.getItem(DEEP_LIST_STORAGE_KEY) || 'null');
+            if (rawList && Array.isArray(rawList.items)) {
+                deepPlaylist = rawList.items
+                    .filter(it => it && it.title && (it.path || it.url))
+                    .map((it, idx) => ({
+                        id: it.id || makeTrackId(it, idx),
+                        title: it.title,
+                        folder: it.folder || '',
+                        path: it.path || '',
+                        sign: it.sign || '',
+                        url: it.url || '',
+                        type: it.type || (it.path ? 'alist' : 'url')
+                    }));
+                deepIdSet = new Set(deepPlaylist.map(it => it.id));
+            }
+        } catch {
+            deepPlaylist = [];
+            deepIdSet = new Set();
+        }
+
+        try {
+            const rawState = JSON.parse(localStorage.getItem(SCAN_STATE_STORAGE_KEY) || 'null');
+            if (rawState && typeof rawState === 'object' && rawState.rootPath) {
+                scanState = {
+                    rootPath: rawState.rootPath,
+                    engine: rawState.engine || 'pending',
+                    queue: Array.isArray(rawState.queue) ? rawState.queue : [],
+                    visited: Array.isArray(rawState.visited) ? rawState.visited : [],
+                    scannedFolders: Number(rawState.scannedFolders) || 0,
+                    completed: Boolean(rawState.completed),
+                    updatedAt: Number(rawState.updatedAt) || Date.now()
+                };
+            }
+        } catch {
+            scanState = null;
+        }
+    }
+
+    function saveDeepStorage(force = false) {
+        const now = Date.now();
+        if (!force && now - lastSaveTs < 700) return;
+        lastSaveTs = now;
+
+        try {
+            const compactItems = deepPlaylist.map(it => ({
+                id: it.id,
+                title: it.title,
+                folder: it.folder || '',
+                path: it.path || '',
+                sign: it.sign || '',
+                url: it.url || '',
+                type: it.type
+            }));
+            localStorage.setItem(DEEP_LIST_STORAGE_KEY, JSON.stringify({
+                rootPath: scanState ? scanState.rootPath : '',
+                updatedAt: now,
+                items: compactItems
+            }));
+        } catch {
+            if (force) showToast('⚠️ 子資料夾列表過大，瀏覽器儲存空間不足');
+        }
+
+        try {
+            if (scanState) {
+                scanState.updatedAt = now;
+                localStorage.setItem(SCAN_STATE_STORAGE_KEY, JSON.stringify(scanState));
+            } else {
+                localStorage.removeItem(SCAN_STATE_STORAGE_KEY);
+            }
+        } catch {}
+    }
+
+    function hasPendingCheckpoint() {
+        return Boolean(scanState && !scanState.completed && Array.isArray(scanState.queue) && scanState.queue.length > 0);
+    }
+
+    function getListBySource(source) {
+        return source === 'deep' ? deepPlaylist : pagePlaylist;
+    }
+
+    function getActiveList() {
+        return getListBySource(listMode);
+    }
+
+    function findTrackById(id, preferredSource) {
+        if (!id) return null;
+        const first = getListBySource(preferredSource || playingSource);
+        let found = first.find(it => it.id === id);
+        if (found) return { track: found, source: preferredSource || playingSource };
+        const otherSource = (preferredSource || playingSource) === 'deep' ? 'page' : 'deep';
+        found = getListBySource(otherSource).find(it => it.id === id);
+        return found ? { track: found, source: otherSource } : null;
+    }
+
+    function getCurrentTrack() {
+        const res = findTrackById(currentTrackId, playingSource);
+        return res ? res.track : null;
+    }
+
+    // 載入已儲存的子資料夾庫與斷點進度
+    loadDeepStorage();
+
+    // 頁面關閉、重整或切背景時強制落盤保存斷點與列表
+    const flushOnLeave = () => {
+        if (isScanning || deepPlaylist.length > 0 || scanState) {
+            saveDeepStorage(true);
+        }
+    };
+    window.addEventListener('beforeunload', flushOnLeave);
+    window.addEventListener('pagehide', flushOnLeave);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushOnLeave();
+    });
+
     // ==========================================
     // 1. 音訊引擎 (內建獨立播放器 + 原站音訊攔截)
     // ==========================================
     const OrigAudio = window.Audio;
     const origPlay = HTMLMediaElement.prototype.play;
 
-    // 專供跨資料夾掃描曲目使用的獨立音訊元件
     const customAudio = new OrigAudio();
     customAudio.preload = 'metadata';
 
@@ -131,17 +271,16 @@
         }
     }
 
-    // Media Session API (手機鎖屏 / 藍牙耳機控制)
     function updateMediaSession() {
         if (!('mediaSession' in navigator)) return;
-        const item = currentIndex >= 0 ? playlist[currentIndex] : null;
+        const item = getCurrentTrack();
         const title = item ? item.title : getFallbackTitle();
         const artist = (item && item.folder) ? item.folder : 'ASMRgay 自訂播放器';
         try {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title,
                 artist,
-                album: 'ASMR 播放清單'
+                album: searchPlayQueue ? `搜尋連播：${searchPlayQueue.keyword}` : 'ASMR 播放清單'
             });
             navigator.mediaSession.setActionHandler('play', () => togglePlay());
             navigator.mediaSession.setActionHandler('pause', () => togglePlay());
@@ -153,7 +292,148 @@
     }
 
     // ==========================================
-    // 2. 路徑工具 & 子資料夾遞迴掃描引擎
+    // 2. 搜尋相關度排序 & 播放佇列管理
+    // ==========================================
+    function scoreSearchMatch(item, rawKeyword) {
+        const q = (rawKeyword || '').trim().toLowerCase();
+        if (!q) return 1;
+
+        const tokens = q.split(/\s+/).filter(Boolean);
+        const titleLower = (item.title || '').toLowerCase();
+        const titleStem = titleLower.replace(AUDIO_EXT_RE, '');
+        const folderLower = (item.folder || '').toLowerCase();
+        const combined = `${titleLower} ${folderLower}`;
+
+        // 每個關鍵字都必須出現在標題或資料夾中
+        for (const tok of tokens) {
+            if (!combined.includes(tok)) return 0;
+        }
+
+        let score = 10;
+
+        // 1. 標題完整相符 / 開頭相符 / 完整片語命中
+        if (titleStem === q || titleLower === q) {
+            score += 1000;
+        } else if (titleLower.startsWith(q)) {
+            score += 650;
+        } else {
+            const fullIdx = titleLower.indexOf(q);
+            if (fullIdx !== -1) {
+                score += 420 - Math.min(160, fullIdx * 2);
+            }
+        }
+
+        // 2. 所有關鍵字皆命中在標題內
+        let allInTitle = true;
+        for (const tok of tokens) {
+            const tIdx = titleLower.indexOf(tok);
+            if (tIdx !== -1) {
+                score += 80 - Math.min(40, tIdx);
+            } else {
+                allInTitle = false;
+                const fIdx = folderLower.indexOf(tok);
+                if (fIdx !== -1) score += 25 - Math.min(15, Math.floor(fIdx / 4));
+            }
+        }
+        if (allInTitle) score += 180;
+
+        // 3. 資料夾完整片語加權
+        if (folderLower.includes(q)) {
+            score += 120;
+        }
+
+        // 4. 同等命中程度下，標題較精簡者略為優先
+        score += Math.max(0, 40 - Math.floor(titleStem.length / 4));
+
+        return score;
+    }
+
+    function getFilteredSortedEntries(list, rawKeyword) {
+        const kw = (rawKeyword || '').trim();
+        if (!kw) {
+            return list.map((item, idx) => ({ item, idx, score: 0 }));
+        }
+
+        const matched = [];
+        for (let idx = 0; idx < list.length; idx++) {
+            const item = list[idx];
+            const score = scoreSearchMatch(item, kw);
+            if (score > 0) {
+                matched.push({ item, idx, score });
+            }
+        }
+
+        matched.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return a.idx - b.idx;
+        });
+
+        return matched;
+    }
+
+    function getLiveSearchKeyword() {
+        return (ui.searchInput ? ui.searchInput.value : '').trim();
+    }
+
+    function clearSearchPlayQueue() {
+        searchPlayQueue = null;
+        updateHeaderTitle();
+        updateMediaSession();
+    }
+
+    // 取得目前「上一首 / 下一首 / 自動連播」實際採用的曲目 ID 順序
+    function getActivePlaybackQueueInfo() {
+        const liveKw = getLiveSearchKeyword();
+
+        // 若搜尋框有輸入關鍵字，且尚未鎖定或關鍵字已變更，直接即時同步為該搜尋結果排序
+        if (liveKw) {
+            if (!searchPlayQueue || searchPlayQueue.keyword !== liveKw || searchPlayQueue.source !== listMode) {
+                const entries = getFilteredSortedEntries(getActiveList(), liveKw);
+                if (entries.length > 0) {
+                    searchPlayQueue = {
+                        source: listMode,
+                        keyword: liveKw,
+                        ids: entries.map(e => e.item.id)
+                    };
+                }
+            }
+        }
+
+        if (searchPlayQueue && searchPlayQueue.ids.length > 0) {
+            const list = getListBySource(searchPlayQueue.source);
+            const idSet = new Set(list.map(it => it.id));
+            const validIds = searchPlayQueue.ids.filter(id => idSet.has(id));
+            if (validIds.length > 0) {
+                return {
+                    source: searchPlayQueue.source,
+                    ids: validIds,
+                    isSearchQueue: true,
+                    keyword: searchPlayQueue.keyword
+                };
+            }
+        }
+
+        const list = getListBySource(playingSource);
+        if (list.length > 0) {
+            return {
+                source: playingSource,
+                ids: list.map(it => it.id),
+                isSearchQueue: false,
+                keyword: ''
+            };
+        }
+
+        const fallbackList = getActiveList();
+        return {
+            source: listMode,
+            ids: fallbackList.map(it => it.id),
+            isSearchQueue: false,
+            keyword: ''
+        };
+    }
+
+    // ==========================================
+    // 3. 路徑工具 & 子資料夾斷點遞迴掃描引擎
     // ==========================================
     function normalizePath(pathname) {
         let p = pathname || '/';
@@ -226,7 +506,6 @@
         let content = Array.isArray(first.data.content) ? first.data.content.slice() : [];
         const total = first.data.total || content.length;
 
-        // 若伺服器強制分頁，補抓後續頁面
         if (total > content.length && content.length > 0) {
             const pageSize = content.length;
             const totalPages = Math.ceil(total / pageSize);
@@ -250,7 +529,6 @@
     }
 
     async function resolveAlistAudioUrl(item) {
-        // 20 分鐘內重複播放直接沿用快取直連
         if (item.resolvedUrl && Date.now() - (item.resolvedAt || 0) < 20 * 60 * 1000) {
             return item.resolvedUrl;
         }
@@ -267,23 +545,70 @@
             }
         } catch {}
 
-        // 備援：走 AList /d/ 直連路徑
         const signQuery = item.sign ? `?sign=${encodeURIComponent(item.sign)}` : '';
         return `${location.origin}/d${encodePathSegments(item.path)}${signQuery}`;
     }
 
-    function updateScanStatus(text, show) {
-        if (!ui.scanBar) return;
-        ui.scanBar.classList.toggle('hidden', !show);
-        if (ui.scanStatusText && text) ui.scanStatusText.textContent = text;
+    function addDeepTrack(track) {
+        const id = track.id || makeTrackId(track);
+        if (deepIdSet.has(id)) return false;
+        deepIdSet.add(id);
+        deepPlaylist.push(Object.assign({}, track, { id }));
+        return true;
+    }
+
+    function updateScanControlsUI(liveText = '') {
+        const pending = hasPendingCheckpoint();
+        const pendingCount = pending ? scanState.queue.length : 0;
+
         if (ui.scanDockBtn) {
-            ui.scanDockBtn.textContent = isScanning ? '⏹ 停止掃描' : '📂 掃描子資料夾';
-            ui.scanDockBtn.classList.toggle('active', isScanning);
+            if (isScanning) {
+                ui.scanDockBtn.textContent = '⏹ 停止掃描';
+                ui.scanDockBtn.classList.add('active');
+            } else if (pending) {
+                ui.scanDockBtn.textContent = `▶ 繼續掃描 (餘${pendingCount})`;
+                ui.scanDockBtn.classList.remove('active');
+            } else {
+                ui.scanDockBtn.textContent = '📂 掃描子資料夾';
+                ui.scanDockBtn.classList.remove('active');
+            }
         }
+
         if (ui.scanDrawerBtn) {
-            ui.scanDrawerBtn.textContent = isScanning ? '⏹ 停止掃描' : '📂 掃描子資料夾';
-            ui.scanDrawerBtn.classList.toggle('active', isScanning);
+            if (isScanning) {
+                ui.scanDrawerBtn.textContent = '⏹ 停止掃描';
+                ui.scanDrawerBtn.classList.add('active');
+            } else if (pending) {
+                ui.scanDrawerBtn.textContent = `▶ 繼續掃描 (餘${pendingCount})`;
+                ui.scanDrawerBtn.classList.remove('active');
+            } else {
+                ui.scanDrawerBtn.textContent = '📂 掃描子資料夾';
+                ui.scanDrawerBtn.classList.remove('active');
+            }
         }
+
+        if (!ui.scanBar) return;
+
+        const shouldShowBar = isScanning || pending || (listMode === 'deep' && deepPlaylist.length > 0);
+        ui.scanBar.classList.toggle('hidden', !shouldShowBar);
+
+        if (ui.stopScanBtn) ui.stopScanBtn.classList.toggle('hidden', !isScanning);
+        if (ui.resumeScanBtn) ui.resumeScanBtn.classList.toggle('hidden', isScanning || !pending);
+        if (ui.restartScanBtn) ui.restartScanBtn.classList.toggle('hidden', isScanning || (!pending && deepPlaylist.length === 0));
+        if (ui.clearDeepBtn) ui.clearDeepBtn.classList.toggle('hidden', isScanning || (deepPlaylist.length === 0 && !scanState));
+
+        if (ui.scanStatusText) {
+            if (isScanning) {
+                ui.scanStatusText.textContent = liveText || '正在掃描子資料夾...';
+            } else if (pending) {
+                ui.scanStatusText.textContent = `⏸ 已記錄斷點（${scanState.rootPath}）：已掃 ${scanState.scannedFolders} 夾 · 剩餘 ${pendingCount} 夾 · 已存 ${deepPlaylist.length} 首`;
+            } else if (deepPlaylist.length > 0) {
+                const rootLabel = scanState && scanState.rootPath ? `（${scanState.rootPath}）` : '';
+                ui.scanStatusText.textContent = `✅ 子資料夾庫已儲存${rootLabel}：共 ${deepPlaylist.length} 首`;
+            }
+        }
+
+        updateTabBadges();
     }
 
     function stopSubfolderScan() {
@@ -292,31 +617,78 @@
             scanAbortCtrl = null;
         }
         isScanning = false;
-        updateScanStatus('', false);
-        showToast(`已停止掃描，保留目前找到的 ${playlist.length} 個音檔`);
+        saveDeepStorage(true);
+        updateScanControlsUI();
+        const remain = hasPendingCheckpoint() ? `，已記錄斷點（剩餘 ${scanState.queue.length} 夾），下次可繼續掃` : '';
+        showToast(`已停止掃描，保留 ${deepPlaylist.length} 個音檔${remain}`, 3200);
     }
 
-    async function startSubfolderScan() {
+    function clearDeepLibrary() {
+        if (isScanning) stopSubfolderScan();
+        if (deepPlaylist.length > 0 && !confirm(`確定要清空已儲存的 ${deepPlaylist.length} 首子資料夾清單與掃描斷點嗎？`)) {
+            return;
+        }
+        deepPlaylist = [];
+        deepIdSet.clear();
+        scanState = null;
+        if (searchPlayQueue && searchPlayQueue.source === 'deep') {
+            searchPlayQueue = null;
+        }
+        saveDeepStorage(true);
+        updateScanControlsUI();
+        renderPlaylistUI();
+        updateHeaderTitle();
+        showToast('已清空子資料夾庫與斷點紀錄');
+    }
+
+    function handlePrimaryScanButtonClick() {
+        if (isScanning) {
+            stopSubfolderScan();
+            return;
+        }
+        if (hasPendingCheckpoint()) {
+            startSubfolderScan({ resume: true });
+        } else {
+            startSubfolderScan({ resume: false });
+        }
+    }
+
+    async function startSubfolderScan({ resume = false, clearExisting = false } = {}) {
         if (isScanning) {
             stopSubfolderScan();
             return;
         }
 
+        const currentPath = normalizePath(location.pathname);
+        const canResume = resume && hasPendingCheckpoint() && scanState.engine !== 'pending';
+
+        if (!canResume) {
+            if (clearExisting && deepPlaylist.length > 0) {
+                deepPlaylist = [];
+                deepIdSet.clear();
+            }
+            scanState = {
+                rootPath: currentPath,
+                engine: 'pending',
+                queue: [],
+                visited: [currentPath],
+                scannedFolders: 0,
+                completed: false,
+                updatedAt: Date.now()
+            };
+            saveDeepStorage(true);
+        }
+
+        // 自動切換到「子資料夾庫」分頁並開啟抽屜
+        setListMode('deep', false);
+        toggleDrawer(true, true);
+
         isScanning = true;
-        isDeepScanned = true;
         scanAbortCtrl = new AbortController();
         const signal = scanAbortCtrl.signal;
-        const startPath = normalizePath(location.pathname);
 
-        // 打開列表抽屜讓使用者即時看到掃描進度與曲目
-        toggleDrawer(true, true);
-        playlist = [];
-        currentIndex = -1;
-        renderPlaylistUI();
-        updateHeaderTitle();
-        updateScanStatus('正在偵測目錄架構並開始掃描子資料夾...', true);
-
-        let scannedFolders = 0;
+        const visitedSet = new Set(scanState.visited);
+        let batchScanned = 0;
         let lastRenderTime = 0;
 
         const flushUI = (force = false) => {
@@ -325,59 +697,113 @@
                 lastRenderTime = now;
                 renderPlaylistUI();
                 updateHeaderTitle();
+                updateTabBadges();
             }
+            saveDeepStorage(force);
         };
 
+        updateScanControlsUI(
+            canResume
+                ? `▶ 從斷點繼續掃描（已掃 ${scanState.scannedFolders} 夾，待掃 ${scanState.queue.length} 夾）...`
+                : '正在偵測目錄架構並開始掃描子資料夾...'
+        );
+
         try {
-            // === 引擎 A：先嘗試 AList /api/fs/list ===
-            let useHtmlFallback = false;
-            let rootContent = null;
-            try {
-                rootContent = await fetchAlistFolderAll(startPath, signal);
-            } catch (err) {
-                if (err.name === 'AbortError') throw err;
-                useHtmlFallback = true;
-            }
+            // === 初次啟動：決定引擎並掃描根目錄 ===
+            if (!canResume || scanState.engine === 'pending') {
+                let rootContent = null;
+                let useHtmlFallback = false;
+                try {
+                    rootContent = await fetchAlistFolderAll(scanState.rootPath, signal);
+                } catch (err) {
+                    if (err && err.name === 'AbortError') throw err;
+                    useHtmlFallback = true;
+                }
 
-            if (!useHtmlFallback && rootContent) {
-                const queue = [{ path: startPath, relFolder: '', depth: 0, prefetched: rootContent }];
-                const visited = new Set([startPath]);
+                if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-                while (queue.length > 0 && scannedFolders < SCAN_MAX_FOLDERS) {
-                    if (signal.aborted) break;
-                    const node = queue.shift();
-                    scannedFolders++;
+                if (!useHtmlFallback && rootContent) {
+                    scanState.engine = 'alist';
+                    const dirs = rootContent.filter(e => e.is_dir).sort((a, b) => naturalSort(a.name, b.name));
+                    const files = rootContent.filter(e => !e.is_dir && AUDIO_EXT_RE.test(e.name)).sort((a, b) => naturalSort(a.name, b.name));
 
-                    let entries = node.prefetched;
-                    if (!entries) {
-                        try {
-                            entries = await fetchAlistFolderAll(node.path, signal);
-                        } catch (err) {
-                            if (err.name === 'AbortError') break;
-                            continue;
+                    for (const f of files) {
+                        addDeepTrack({
+                            title: f.name,
+                            folder: '目前資料夾',
+                            path: joinPath(scanState.rootPath, f.name),
+                            sign: f.sign || '',
+                            type: 'alist'
+                        });
+                    }
+
+                    for (const d of dirs) {
+                        const childPath = joinPath(scanState.rootPath, d.name);
+                        if (!visitedSet.has(childPath)) {
+                            visitedSet.add(childPath);
+                            scanState.visited.push(childPath);
+                            scanState.queue.push({
+                                path: childPath,
+                                relFolder: d.name,
+                                depth: 1
+                            });
                         }
                     }
+
+                    scanState.scannedFolders++;
+                    batchScanned++;
+                    flushUI(true);
+                } else {
+                    scanState.engine = 'html';
+                    extractHtmlDocToDeepQueue(document, location.href, scanState.rootPath, scanState.rootPath, 0, visitedSet);
+                    scanState.scannedFolders++;
+                    batchScanned++;
+                    flushUI(true);
+                }
+            }
+
+            // === 依引擎繼續掃描剩餘佇列 ===
+            if (scanState.engine === 'alist') {
+                while (scanState.queue.length > 0 && batchScanned < SCAN_BATCH_FOLDERS) {
+                    if (signal.aborted) break;
+                    // 先讀取佇列頭但不移出，確保中途停止或重整不會遺漏此資料夾
+                    const node = scanState.queue[0];
+
+                    let entries = null;
+                    try {
+                        entries = await fetchAlistFolderAll(node.path, signal);
+                    } catch (err) {
+                        if (err && err.name === 'AbortError') break;
+                        // 單一資料夾讀取失敗（例如無權限）則跳過並移出佇列
+                        scanState.queue.shift();
+                        scanState.scannedFolders++;
+                        batchScanned++;
+                        saveDeepStorage(false);
+                        continue;
+                    }
+
+                    if (signal.aborted) break;
 
                     const dirs = entries.filter(e => e.is_dir).sort((a, b) => naturalSort(a.name, b.name));
                     const files = entries.filter(e => !e.is_dir && AUDIO_EXT_RE.test(e.name)).sort((a, b) => naturalSort(a.name, b.name));
 
                     for (const f of files) {
-                        playlist.push({
+                        addDeepTrack({
                             title: f.name,
                             folder: node.relFolder || '目前資料夾',
                             path: joinPath(node.path, f.name),
                             sign: f.sign || '',
-                            type: 'alist',
-                            active: false
+                            type: 'alist'
                         });
                     }
 
                     if (node.depth < SCAN_MAX_DEPTH) {
                         for (const d of dirs) {
                             const childPath = joinPath(node.path, d.name);
-                            if (!visited.has(childPath)) {
-                                visited.add(childPath);
-                                queue.push({
+                            if (!visitedSet.has(childPath)) {
+                                visitedSet.add(childPath);
+                                scanState.visited.push(childPath);
+                                scanState.queue.push({
                                     path: childPath,
                                     relFolder: node.relFolder ? `${node.relFolder} / ${d.name}` : d.name,
                                     depth: node.depth + 1
@@ -386,139 +812,145 @@
                         }
                     }
 
-                    updateScanStatus(`已掃描 ${scannedFolders} 個資料夾（待掃 ${queue.length}），找到 ${playlist.length} 個音檔...`, true);
+                    // 完整處理完該資料夾後才移出佇列並推進計數
+                    scanState.queue.shift();
+                    scanState.scannedFolders++;
+                    batchScanned++;
+
+                    updateScanControlsUI(`⏳ 已掃 ${scanState.scannedFolders} 夾（待掃 ${scanState.queue.length} 夾），子資料夾庫 ${deepPlaylist.length} 首...`);
                     flushUI();
 
-                    if (queue.length > 0) {
+                    if (scanState.queue.length > 0 && batchScanned < SCAN_BATCH_FOLDERS) {
                         await sleep(90, signal);
                     }
                 }
-            } else {
-                // === 引擎 B：一般 HTML 目錄遞迴爬蟲備援 ===
-                await scanViaHtmlCrawler(startPath, signal, (doneCount, pendingCount) => {
-                    scannedFolders = doneCount;
-                    updateScanStatus(`網頁爬蟲已掃描 ${doneCount} 頁（待掃 ${pendingCount}），找到 ${playlist.length} 個音檔...`, true);
+            } else if (scanState.engine === 'html') {
+                const parser = new DOMParser();
+                while (scanState.queue.length > 0 && batchScanned < 150) {
+                    if (signal.aborted) break;
+                    const batch = scanState.queue.slice(0, 3);
+                    const finishedPaths = new Set();
+
+                    await Promise.all(batch.map(async (item) => {
+                        if (signal.aborted) return;
+                        try {
+                            const res = await fetch(item.url, { credentials: 'same-origin', signal });
+                            if (signal.aborted) return;
+                            const ct = res.headers.get('content-type') || '';
+                            if (res.ok && ct.includes('text/html')) {
+                                const html = await res.text();
+                                if (signal.aborted) return;
+                                const doc = parser.parseFromString(html, 'text/html');
+                                extractHtmlDocToDeepQueue(doc, item.url, item.path, scanState.rootPath, item.depth, visitedSet);
+                            }
+                            finishedPaths.add(item.path);
+                            scanState.scannedFolders++;
+                            batchScanned++;
+                        } catch (err) {
+                            if (err && err.name === 'AbortError') return;
+                            finishedPaths.add(item.path);
+                            scanState.scannedFolders++;
+                            batchScanned++;
+                        }
+                    }));
+
+                    scanState.queue = scanState.queue.filter(q => !finishedPaths.has(q.path));
+                    updateScanControlsUI(`⏳ 網頁爬蟲已掃 ${scanState.scannedFolders} 頁（待掃 ${scanState.queue.length} 頁），共 ${deepPlaylist.length} 首...`);
                     flushUI();
-                });
+
+                    if (scanState.queue.length > 0 && batchScanned < 150) {
+                        await sleep(120, signal);
+                    }
+                }
             }
 
-            flushUI(true);
             if (!signal.aborted) {
-                if (playlist.length > 0) {
-                    showToast(`掃描完成！共掃過 ${scannedFolders} 個資料夾，拉取 ${playlist.length} 個音檔`, 3500);
+                if (scanState.queue.length === 0) {
+                    scanState.completed = true;
+                    flushUI(true);
+                    if (deepPlaylist.length > 0) {
+                        showToast(`掃描完成！共掃 ${scanState.scannedFolders} 夾，子資料夾庫共 ${deepPlaylist.length} 首`, 3500);
+                    } else {
+                        showToast(`已掃描 ${scanState.scannedFolders} 個資料夾，未發現支援格式的音檔`, 3500);
+                    }
                 } else {
-                    showToast(`已掃描 ${scannedFolders} 個資料夾，未發現支援格式的音檔`, 3500);
+                    // 達到單次掃描上限，自動保存斷點
+                    scanState.completed = false;
+                    flushUI(true);
+                    showToast(`本輪已掃 ${batchScanned} 夾，已保存斷點（剩餘 ${scanState.queue.length} 夾），點「▶ 繼續掃描」可接續`, 4000);
                 }
             }
         } catch (err) {
             if (err && err.name !== 'AbortError') {
-                showToast(`掃描發生錯誤：${err.message || '無法讀取子資料夾'}`, 3500);
+                showToast(`掃描發生錯誤：${err.message || '無法讀取子資料夾'}（已保存目前進度）`, 3500);
             }
         } finally {
             isScanning = false;
             scanAbortCtrl = null;
-            updateScanStatus('', false);
-            flushUI(true);
+            saveDeepStorage(true);
+            updateScanControlsUI();
+            renderPlaylistUI();
+            updateHeaderTitle();
         }
     }
 
-    async function scanViaHtmlCrawler(startPath, signal, onProgress) {
-        const visitedPages = new Set([startPath]);
-        const seenAudioUrls = new Set();
-        const queue = [];
+    function extractHtmlDocToDeepQueue(doc, baseUrl, currentNormPath, startPath, depth, visitedSet) {
+        const folderLabel = currentNormPath === startPath
+            ? '目前資料夾'
+            : currentNormPath.slice(startPath.length).replace(/^\/+/, '');
 
-        const extractFromDoc = (doc, baseUrl, currentNormPath, depth) => {
-            const folderLabel = currentNormPath === startPath
-                ? '目前資料夾'
-                : currentNormPath.slice(startPath.length).replace(/^\/+/, '');
+        doc.querySelectorAll('audio[src], audio source[src]').forEach(node => {
+            const rawSrc = node.getAttribute('src');
+            if (!rawSrc) return;
+            try {
+                const abs = new URL(rawSrc, baseUrl).href;
+                const name = decodeURIComponent(abs.split('/').pop().split('?')[0]) || '音檔';
+                addDeepTrack({ title: name, folder: folderLabel, url: abs, type: 'url' });
+            } catch {}
+        });
 
-            // 1. 抓取 <audio> / <source>
-            doc.querySelectorAll('audio[src], audio source[src]').forEach(node => {
-                const rawSrc = node.getAttribute('src');
-                if (!rawSrc) return;
-                try {
-                    const abs = new URL(rawSrc, baseUrl).href;
-                    if (!seenAudioUrls.has(abs)) {
-                        seenAudioUrls.add(abs);
-                        const name = decodeURIComponent(abs.split('/').pop().split('?')[0]) || '音檔';
-                        playlist.push({ title: name, folder: folderLabel, url: abs, type: 'url', active: false });
-                    }
-                } catch {}
-            });
+        doc.querySelectorAll('a[href]').forEach(a => {
+            const href = a.getAttribute('href');
+            if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) return;
+            let urlObj;
+            try {
+                urlObj = new URL(href, baseUrl);
+            } catch {
+                return;
+            }
+            if (urlObj.origin !== location.origin) return;
 
-            // 2. 抓取所有 <a> 連結（區分音檔與下層子資料夾）
-            doc.querySelectorAll('a[href]').forEach(a => {
-                const href = a.getAttribute('href');
-                if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) return;
-                let urlObj;
-                try {
-                    urlObj = new URL(href, baseUrl);
-                } catch {
-                    return;
-                }
-                if (urlObj.origin !== location.origin) return;
+            const linkPath = normalizePath(urlObj.pathname);
+            const text = (a.getAttribute('title') || a.textContent || '').replace(/\s+/g, ' ').trim();
 
-                const linkPath = normalizePath(urlObj.pathname);
-                const text = (a.getAttribute('title') || a.textContent || '').replace(/\s+/g, ' ').trim();
+            if (AUDIO_EXT_RE.test(linkPath) || AUDIO_EXT_RE.test(text)) {
+                const abs = urlObj.href;
+                const fileName = text && text.length > 1
+                    ? text
+                    : decodeURIComponent(linkPath.split('/').pop() || '音檔');
+                addDeepTrack({ title: fileName, folder: folderLabel, url: abs, type: 'url' });
+                return;
+            }
 
-                if (AUDIO_EXT_RE.test(linkPath) || AUDIO_EXT_RE.test(text)) {
-                    const abs = urlObj.href;
-                    if (!seenAudioUrls.has(abs)) {
-                        seenAudioUrls.add(abs);
-                        const fileName = text && text.length > 1
-                            ? text
-                            : decodeURIComponent(linkPath.split('/').pop() || '音檔');
-                        playlist.push({ title: fileName, folder: folderLabel, url: abs, type: 'url', active: false });
-                    }
-                    return;
-                }
+            const isChildOfStart = startPath === '/'
+                ? linkPath !== '/'
+                : linkPath.startsWith(startPath + '/');
 
-                // 嚴格限定只能往「目前母目錄的子路徑」鑽，避免爬到導覽列或外部頁面
-                const isChildOfStart = startPath === '/'
-                    ? linkPath !== '/'
-                    : linkPath.startsWith(startPath + '/');
-
-                if (
-                    depth < SCAN_MAX_DEPTH &&
-                    isChildOfStart &&
-                    !SKIP_EXT_RE.test(linkPath) &&
-                    !visitedPages.has(linkPath)
-                ) {
-                    visitedPages.add(linkPath);
-                    queue.push({ url: urlObj.href, path: linkPath, depth: depth + 1 });
-                }
-            });
-        };
-
-        // 先分析目前頁面 DOM
-        extractFromDoc(document, location.href, startPath, 0);
-        let doneCount = 1;
-        onProgress(doneCount, queue.length);
-
-        const parser = new DOMParser();
-        while (queue.length > 0 && doneCount < 150) {
-            if (signal.aborted) break;
-            const batch = queue.splice(0, 3);
-            await Promise.all(batch.map(async (item) => {
-                if (signal.aborted) return;
-                try {
-                    const res = await fetch(item.url, { credentials: 'same-origin', signal });
-                    const ct = res.headers.get('content-type') || '';
-                    if (res.ok && ct.includes('text/html')) {
-                        const html = await res.text();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        extractFromDoc(doc, item.url, item.path, item.depth);
-                    }
-                } catch {}
-                doneCount++;
-            }));
-            onProgress(doneCount, queue.length);
-            if (queue.length > 0) await sleep(120, signal);
-        }
+            if (
+                depth < SCAN_MAX_DEPTH &&
+                isChildOfStart &&
+                !SKIP_EXT_RE.test(linkPath) &&
+                !visitedSet.has(linkPath)
+            ) {
+                visitedSet.add(linkPath);
+                scanState.visited.push(linkPath);
+                scanState.queue.push({ url: urlObj.href, path: linkPath, depth: depth + 1 });
+            }
+        });
     }
 
     // ==========================================
-    // 3. 當前頁面播放清單自動掃描器
+    // 4. 當前頁面播放清單自動掃描器 (獨立於子資料夾庫)
     // ==========================================
     const PRESET_SELECTORS = [
         '.aplayer-list ol li',
@@ -558,7 +990,7 @@
         );
     }
 
-    function scanPlaylist() {
+    function scanPagePlaylist() {
         let items = [];
 
         if (cfg.customListSelector) {
@@ -644,21 +1076,30 @@
             }
         }
 
-        playlist = items;
-        isDeepScanned = false;
-        const activeIdx = playlist.findIndex(i => i.active);
-        if (activeIdx !== -1) currentIndex = activeIdx;
+        pagePlaylist = items.map((it, idx) => Object.assign({}, it, { id: makeTrackId(it, idx) }));
 
-        renderPlaylistUI();
+        if (playingSource === 'page' && (!currentMedia || currentMedia !== customAudio)) {
+            const activeItem = pagePlaylist.find(i => i.active);
+            if (activeItem) currentTrackId = activeItem.id;
+        }
+
+        updateTabBadges();
+        if (listMode === 'page') {
+            renderPlaylistUI();
+        }
         updateHeaderTitle();
     }
 
-    async function playTrackAt(index) {
-        if (index < 0 || index >= playlist.length) return;
-        const item = playlist[index];
-        currentIndex = index;
+    async function playTrack(item, source, newSearchQueue = undefined) {
+        if (!item) return;
 
-        playlist.forEach((it, i) => { it.active = i === index; });
+        playingSource = source || listMode;
+        currentTrackId = item.id;
+
+        if (newSearchQueue !== undefined) {
+            searchPlayQueue = newSearchQueue;
+        }
+
         updateHeaderTitle();
         renderPlaylistUI();
         updateMediaSession();
@@ -673,8 +1114,7 @@
             if (item.type === 'alist') {
                 showToast('正在載入音檔連結...', 1500);
                 targetUrl = await resolveAlistAudioUrl(item);
-                // 避免連點切歌造成競態覆蓋
-                if (currentIndex !== index) return;
+                if (currentTrackId !== item.id) return;
             }
 
             if (!targetUrl) {
@@ -713,12 +1153,13 @@
     }
 
     function syncCurrentTrackHighlight() {
-        if (!playlist.length || isDeepScanned) return;
+        if (!pagePlaylist.length || currentMedia === customAudio) return;
         let changed = false;
-        playlist.forEach((item, idx) => {
+        pagePlaylist.forEach((item) => {
             const act = item.type === 'audio' ? item.el === currentMedia : isElementActive(item.el);
-            if (act && currentIndex !== idx) {
-                currentIndex = idx;
+            if (act && (playingSource !== 'page' || currentTrackId !== item.id)) {
+                playingSource = 'page';
+                currentTrackId = item.id;
                 changed = true;
             }
             item.active = act;
@@ -746,16 +1187,21 @@
     }
 
     // ==========================================
-    // 4. 播放控制動作
+    // 5. 播放控制動作 (完整支援搜尋佇列連播)
     // ==========================================
     function togglePlay() {
         if (!currentMedia) findExistingMedia();
         if (!currentMedia) {
-            if (playlist.length > 0) {
-                playTrackAt(currentIndex >= 0 ? currentIndex : 0);
-            } else {
-                showToast('尚未偵測到音檔，請點「📂 掃描子資料夾」或原站播放鍵');
+            const qInfo = getActivePlaybackQueueInfo();
+            if (qInfo.ids.length > 0) {
+                const targetId = qInfo.ids.includes(currentTrackId) ? currentTrackId : qInfo.ids[0];
+                const found = findTrackById(targetId, qInfo.source);
+                if (found) {
+                    playTrack(found.track, found.source);
+                    return;
+                }
             }
+            showToast('尚未偵測到音檔，請點「📂 掃描子資料夾」或原站播放鍵');
             return;
         }
         if (currentMedia.paused) {
@@ -776,22 +1222,34 @@
         showToast(seconds > 0 ? `快進 +${seconds} 秒` : `倒退 ${seconds} 秒`);
     }
 
-    function playPrev() {
-        if (!playlist.length) {
-            seekBy(-15);
+    function stepTrack(delta) {
+        const qInfo = getActivePlaybackQueueInfo();
+        if (!qInfo.ids.length) {
+            seekBy(delta > 0 ? 15 : -15);
             return;
         }
-        const nextIdx = currentIndex > 0 ? currentIndex - 1 : playlist.length - 1;
-        playTrackAt(nextIdx);
+
+        const curPos = qInfo.ids.indexOf(currentTrackId);
+        let nextPos;
+        if (curPos === -1) {
+            nextPos = delta > 0 ? 0 : qInfo.ids.length - 1;
+        } else {
+            nextPos = (curPos + delta + qInfo.ids.length) % qInfo.ids.length;
+        }
+
+        const nextId = qInfo.ids[nextPos];
+        const found = findTrackById(nextId, qInfo.source);
+        if (found) {
+            playTrack(found.track, found.source);
+        }
+    }
+
+    function playPrev() {
+        stepTrack(-1);
     }
 
     function playNext() {
-        if (!playlist.length) {
-            seekBy(15);
-            return;
-        }
-        const nextIdx = currentIndex < playlist.length - 1 ? currentIndex + 1 : 0;
-        playTrackAt(nextIdx);
+        stepTrack(1);
     }
 
     function onMediaEnded() {
@@ -805,7 +1263,8 @@
             return;
         }
 
-        if (cfg.loopMode === 'list' && playlist.length > 1) {
+        const qInfo = getActivePlaybackQueueInfo();
+        if (cfg.loopMode === 'list' && qInfo.ids.length > 1) {
             if (currentMedia === customAudio) {
                 playNext();
                 return;
@@ -913,12 +1372,12 @@
     }
 
     // ==========================================
-    // 5. 手動定位列表模式
+    // 6. 手動定位本頁列表模式
     // ==========================================
     function startPickListMode() {
         isPickingMode = true;
         toggleDrawer(false);
-        showToast('請直接點擊網頁原本的「任一首曲目」，腳本將自動擷取整個清單', 5000);
+        showToast('請直接點擊網頁原本的「任一首曲目」，腳本將自動擷取本頁清單', 5000);
 
         const onPickClick = (e) => {
             if (!isPickingMode) return;
@@ -933,9 +1392,10 @@
             if (selector) {
                 cfg.customListSelector = selector;
                 saveConfig();
-                scanPlaylist();
+                setListMode('page', false);
+                scanPagePlaylist();
                 toggleDrawer(true, true);
-                showToast(`已成功綁定清單（共偵測到 ${playlist.length} 筆）`);
+                showToast(`已成功綁定本頁清單（共偵測到 ${pagePlaylist.length} 筆）`);
             } else {
                 showToast('無法辨識該區塊為清單，請點擊曲目標題文字處再試一次');
             }
@@ -972,7 +1432,7 @@
     }
 
     // ==========================================
-    // 6. Shadow DOM 介面建構
+    // 7. Shadow DOM 介面建構與渲染
     // ==========================================
     function formatTime(sec) {
         if (!isFinite(sec) || sec < 0) return '00:00';
@@ -1011,61 +1471,111 @@
         ui.volRange.value = Math.round((currentMedia.muted ? 0 : currentMedia.volume) * 100);
     }
 
+    function setListMode(mode, shouldRender = true) {
+        listMode = mode === 'deep' ? 'deep' : 'page';
+        cfg.listMode = listMode;
+        saveConfig();
+        updateTabBadges();
+        updateScanControlsUI();
+        if (shouldRender) {
+            renderPlaylistUI();
+            updateHeaderTitle();
+        }
+    }
+
+    function updateTabBadges() {
+        if (ui.tabPageBtn) {
+            ui.tabPageBtn.textContent = `📄 本頁 (${pagePlaylist.length})`;
+            ui.tabPageBtn.classList.toggle('active', listMode === 'page');
+        }
+        if (ui.tabDeepBtn) {
+            const pendingMark = hasPendingCheckpoint() ? ' · 未完' : '';
+            ui.tabDeepBtn.textContent = `📂 子資料夾庫 (${deepPlaylist.length}${pendingMark})`;
+            ui.tabDeepBtn.classList.toggle('active', listMode === 'deep');
+        }
+        if (ui.listBadge) {
+            const activeCount = getActiveList().length;
+            const prefix = listMode === 'deep' ? '📂 子夾庫' : '📋 列表';
+            ui.listBadge.textContent = `${prefix} (${activeCount})`;
+        }
+    }
+
     function updateHeaderTitle() {
         if (!ui.titleText) return;
-        const item = currentIndex >= 0 ? playlist[currentIndex] : null;
+        const item = getCurrentTrack();
         const trackTitle = item ? item.title : getFallbackTitle();
         ui.titleText.textContent = trackTitle;
         ui.miniTitle.textContent = trackTitle;
+
         if (ui.folderSubText) {
+            const parts = [];
+            if (searchPlayQueue && searchPlayQueue.ids.length > 0) {
+                const pos = searchPlayQueue.ids.indexOf(currentTrackId);
+                const posText = pos >= 0 ? ` ${pos + 1}/${searchPlayQueue.ids.length}` : ` (${searchPlayQueue.ids.length}首)`;
+                parts.push(`🔍 搜尋連播「${searchPlayQueue.keyword}」${posText}`);
+            }
             if (item && item.folder) {
-                ui.folderSubText.textContent = `📁 ${item.folder}`;
+                parts.push(`📁 ${item.folder}`);
+            }
+            if (parts.length > 0) {
+                ui.folderSubText.textContent = parts.join(' ｜ ');
                 ui.folderSubText.classList.remove('hidden');
             } else {
                 ui.folderSubText.classList.add('hidden');
             }
         }
-        if (ui.listBadge) {
-            ui.listBadge.textContent = `📋 列表 (${playlist.length})`;
-        }
+        updateTabBadges();
     }
 
     function renderPlaylistUI() {
         if (!ui.listContainer) return;
-        const keyword = (ui.searchInput ? ui.searchInput.value : '').trim().toLowerCase();
-        ui.listContainer.innerHTML = '';
+        const activeList = getActiveList();
+        const keyword = getLiveSearchKeyword();
+        const entries = getFilteredSortedEntries(activeList, keyword);
 
-        const filtered = playlist
-            .map((item, idx) => ({ item, idx }))
-            .filter(({ item }) => {
-                if (!keyword) return true;
-                return (
-                    item.title.toLowerCase().includes(keyword) ||
-                    (item.folder && item.folder.toLowerCase().includes(keyword))
-                );
-            });
-
-        if (ui.drawerCount) {
-            ui.drawerCount.textContent = `共 ${playlist.length} 首${keyword ? `（符合 ${filtered.length} 首）` : ''}`;
+        if (ui.clearSearchBtn) {
+            ui.clearSearchBtn.classList.toggle('hidden', !keyword);
+        }
+        if (ui.searchHint) {
+            if (keyword) {
+                ui.searchHint.textContent = `🔍 已依相關度排序（符合 ${entries.length} 首）· 點擊播放將照此搜尋順序往下連播`;
+                ui.searchHint.classList.remove('hidden');
+            } else {
+                ui.searchHint.classList.add('hidden');
+            }
         }
 
-        if (filtered.length === 0) {
+        if (ui.drawerCount) {
+            const label = listMode === 'deep' ? '子資料夾庫' : '本頁';
+            ui.drawerCount.textContent = `${label}共 ${activeList.length} 首${keyword ? `（符合 ${entries.length} 首）` : ''}`;
+        }
+
+        ui.listContainer.innerHTML = '';
+
+        if (entries.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'empty-tip';
-            empty.innerHTML = playlist.length === 0
-                ? '目前頁面未直接偵測到音檔。<br>如果這裡是母資料夾，請點擊上方 <b>「📂 掃描子資料夾」</b> 一次拉取所有下層音檔！'
-                : '找不到符合關鍵字的曲目或資料夾';
+            if (activeList.length === 0) {
+                empty.innerHTML = listMode === 'deep'
+                    ? '子資料夾庫目前為空。<br>請點擊上方 <b>「📂 掃描子資料夾」</b>，掃描進度與曲目都會自動獨立儲存！'
+                    : '目前頁面未直接偵測到音檔。<br>如果這裡是母資料夾，請切換或點擊 <b>「📂 掃描子資料夾」</b> 一次拉取所有下層音檔！';
+            } else {
+                empty.textContent = '找不到符合關鍵字的曲目或資料夾';
+            }
             ui.listContainer.appendChild(empty);
             return;
         }
 
         const frag = document.createDocumentFragment();
-        filtered.forEach(({ item, idx }) => {
+        const sourceForClick = listMode;
+        const searchIdsSnapshot = keyword ? entries.map(e => e.item.id) : null;
+
+        entries.forEach(({ item }, displayIdx) => {
             const row = document.createElement('div');
-            const isCurrent = idx === currentIndex;
+            const isCurrent = item.id === currentTrackId && playingSource === sourceForClick;
             row.className = `track-row${isCurrent ? ' active' : ''}`;
             row.innerHTML = `
-                <div class="track-num">${isCurrent ? '🔊' : String(idx + 1).padStart(2, '0')}</div>
+                <div class="track-num">${isCurrent ? '🔊' : String(displayIdx + 1).padStart(2, '0')}</div>
                 <div class="track-body">
                     ${item.folder ? '<div class="track-folder"></div>' : ''}
                     <div class="track-title"></div>
@@ -1075,7 +1585,12 @@
                 row.querySelector('.track-folder').textContent = `📁 ${item.folder}`;
             }
             row.querySelector('.track-title').textContent = item.title;
-            row.addEventListener('click', () => playTrackAt(idx));
+            row.addEventListener('click', () => {
+                const queueObj = searchIdsSnapshot
+                    ? { source: sourceForClick, keyword, ids: searchIdsSnapshot }
+                    : null;
+                playTrack(item, sourceForClick, queueObj);
+            });
             frag.appendChild(row);
         });
         ui.listContainer.appendChild(frag);
@@ -1089,9 +1604,11 @@
         ui.drawerBackdrop.classList.toggle('open', isOpen);
 
         if (isOpen) {
-            if (!skipAutoRescan && !isDeepScanned && !isScanning) {
-                scanPlaylist();
+            if (!skipAutoRescan && listMode === 'page' && !isScanning) {
+                scanPagePlaylist();
             }
+            updateScanControlsUI();
+            renderPlaylistUI();
             setTimeout(() => {
                 const activeRow = ui.listContainer.querySelector('.track-row.active');
                 if (activeRow) activeRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -1263,6 +1780,12 @@
         border-color: #f87171;
         color: #fff;
     }
+    .chip-btn.danger-btn {
+        background: rgba(220, 38, 38, 0.22);
+        border-color: rgba(248, 113, 113, 0.45);
+        color: #fecaca;
+    }
+    .chip-btn.danger-btn:hover { background: rgba(220, 38, 38, 0.42); }
 
     .progress-row {
         display: flex;
@@ -1392,7 +1915,7 @@
     }
     .drawer {
         width: min(860px, 98vw);
-        height: min(84vh, 800px);
+        height: min(86vh, 820px);
         background: #0f172a;
         color: #f8fafc;
         border: 1px solid rgba(148, 163, 184, 0.28);
@@ -1407,11 +1930,11 @@
     }
     .drawer-backdrop.open .drawer { transform: translateY(0); }
     .drawer-header {
-        padding: 14px 16px 10px;
+        padding: 12px 16px 10px;
         border-bottom: 1px solid rgba(148, 163, 184, 0.18);
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
         background: #1e293b;
     }
     .drawer-top {
@@ -1422,32 +1945,88 @@
         flex-wrap: wrap;
     }
     .drawer-title { font-size: 16px; font-weight: 700; color: #f8fafc; }
-    .drawer-count { font-size: 13px; color: #94a3b8; margin-left: 8px; font-weight: 400; }
+    .drawer-count { font-size: 12.5px; color: #94a3b8; margin-left: 8px; font-weight: 400; }
     .drawer-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .drawer-tabs {
+        display: flex;
+        gap: 6px;
+    }
+    .tab-btn {
+        flex: 1;
+        padding: 7px 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: rgba(15, 23, 42, 0.65);
+        color: #cbd5e1;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .tab-btn.active {
+        background: linear-gradient(135deg, rgba(236, 72, 153, 0.32), rgba(139, 92, 246, 0.35));
+        border-color: #f472b6;
+        color: #ffffff;
+    }
 
     .scan-bar {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
-        padding: 8px 12px;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 8px 11px;
         border-radius: 10px;
-        background: rgba(14, 165, 233, 0.16);
+        background: rgba(14, 165, 233, 0.15);
         border: 1px solid rgba(56, 189, 248, 0.35);
-        font-size: 13px;
+        font-size: 12.5px;
         color: #bae6fd;
+    }
+    .scan-bar-actions {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .search-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
     }
     .search-input {
         width: 100%;
         background: #0f172a;
         border: 1px solid rgba(148, 163, 184, 0.3);
         border-radius: 10px;
-        padding: 9px 12px;
+        padding: 9px 36px 9px 12px;
         color: #f8fafc;
         font-size: 14px;
         outline: none;
     }
     .search-input:focus { border-color: #ec4899; }
+    .clear-search-btn {
+        position: absolute;
+        right: 8px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(148, 163, 184, 0.25);
+        color: #e2e8f0;
+        font-size: 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .clear-search-btn:hover { background: rgba(236, 72, 153, 0.6); }
+    .search-hint {
+        font-size: 12px;
+        color: #f9a8d4;
+        padding: 0 2px;
+    }
 
     .list-container {
         flex: 1;
@@ -1561,7 +2140,7 @@
 
     <div class="sub-tools">
         <div class="sub-left">
-            <button class="chip-btn scan-btn" id="scanDockBtn" title="遞迴掃描目前目錄內所有子資料夾的音檔">📂 掃描子資料夾</button>
+            <button class="chip-btn scan-btn" id="scanDockBtn" title="掃描或從斷點繼續掃描子資料夾">📂 掃描子資料夾</button>
             <button class="chip-btn" id="speedBtn" title="切換播放倍速">1x</button>
             <button class="chip-btn" id="loopBtn" title="切換循環模式">🔁 列表</button>
             <button class="chip-btn" id="sleepBtn" title="設定睡眠自動暫停">🌙 定時</button>
@@ -1587,15 +2166,31 @@
                 <div class="drawer-btns">
                     <button class="chip-btn scan-btn" id="scanDrawerBtn">📂 掃描子資料夾</button>
                     <button class="chip-btn" id="rescanBtn" title="重掃目前這一頁">🔄 掃本頁</button>
-                    <button class="chip-btn" id="pickBtn" title="手動點擊網頁上的任一曲目來綁定清單">🎯 手動定位</button>
+                    <button class="chip-btn" id="pickBtn" title="手動點擊網頁上的任一曲目來綁定本頁清單">🎯 手動定位</button>
                     <button class="chip-btn" id="closeDrawerBtn">✕ 關閉</button>
                 </div>
             </div>
+
+            <div class="drawer-tabs">
+                <button class="tab-btn" id="tabPageBtn">📄 本頁 (0)</button>
+                <button class="tab-btn" id="tabDeepBtn">📂 子資料夾庫 (0)</button>
+            </div>
+
             <div class="scan-bar hidden" id="scanBar">
                 <span id="scanStatusText">準備掃描...</span>
-                <button class="chip-btn scan-btn active" id="stopScanBtn">⏹ 停止</button>
+                <div class="scan-bar-actions">
+                    <button class="chip-btn scan-btn active hidden" id="stopScanBtn">⏹ 停止並記錄</button>
+                    <button class="chip-btn scan-btn hidden" id="resumeScanBtn">▶ 繼續掃描</button>
+                    <button class="chip-btn hidden" id="restartScanBtn" title="從目前所在目錄重新掃描（保留不重複曲目）">🔄 掃目前目錄</button>
+                    <button class="chip-btn danger-btn hidden" id="clearDeepBtn" title="清空已儲存的子資料夾列表與斷點">🗑 清空庫</button>
+                </div>
             </div>
-            <input type="text" class="search-input" id="searchInput" placeholder="搜尋曲目標題或資料夾名稱...">
+
+            <div class="search-wrap">
+                <input type="text" class="search-input" id="searchInput" placeholder="搜尋曲目標題或資料夾（支援空白多關鍵字，依相關度連播）...">
+                <button class="clear-search-btn hidden" id="clearSearchBtn" title="清除搜尋">✕</button>
+            </div>
+            <div class="search-hint hidden" id="searchHint"></div>
         </div>
         <div class="list-container" id="listContainer"></div>
     </div>
@@ -1624,9 +2219,14 @@
             nextBtn: $('nextBtn'),
             scanDockBtn: $('scanDockBtn'),
             scanDrawerBtn: $('scanDrawerBtn'),
+            tabPageBtn: $('tabPageBtn'),
+            tabDeepBtn: $('tabDeepBtn'),
             scanBar: $('scanBar'),
             scanStatusText: $('scanStatusText'),
             stopScanBtn: $('stopScanBtn'),
+            resumeScanBtn: $('resumeScanBtn'),
+            restartScanBtn: $('restartScanBtn'),
+            clearDeepBtn: $('clearDeepBtn'),
             speedBtn: $('speedBtn'),
             loopBtn: $('loopBtn'),
             sleepBtn: $('sleepBtn'),
@@ -1638,6 +2238,8 @@
             pickBtn: $('pickBtn'),
             closeDrawerBtn: $('closeDrawerBtn'),
             searchInput: $('searchInput'),
+            clearSearchBtn: $('clearSearchBtn'),
+            searchHint: $('searchHint'),
             listContainer: $('listContainer')
         };
 
@@ -1647,7 +2249,6 @@
         setMinimized(cfg.minimized);
         applyHideOriginal();
 
-        // 播放與介面控制事件
         ui.playBtn.addEventListener('click', togglePlay);
         ui.miniPlayBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1661,9 +2262,15 @@
         ui.prevBtn.addEventListener('click', playPrev);
         ui.nextBtn.addEventListener('click', playNext);
 
-        ui.scanDockBtn.addEventListener('click', startSubfolderScan);
-        ui.scanDrawerBtn.addEventListener('click', startSubfolderScan);
+        ui.scanDockBtn.addEventListener('click', handlePrimaryScanButtonClick);
+        ui.scanDrawerBtn.addEventListener('click', handlePrimaryScanButtonClick);
         ui.stopScanBtn.addEventListener('click', stopSubfolderScan);
+        ui.resumeScanBtn.addEventListener('click', () => startSubfolderScan({ resume: true }));
+        ui.restartScanBtn.addEventListener('click', () => startSubfolderScan({ resume: false, clearExisting: false }));
+        ui.clearDeepBtn.addEventListener('click', clearDeepLibrary);
+
+        ui.tabPageBtn.addEventListener('click', () => setListMode('page', true));
+        ui.tabDeepBtn.addEventListener('click', () => setListMode('deep', true));
 
         ui.speedBtn.addEventListener('click', cycleSpeed);
         ui.loopBtn.addEventListener('click', cycleLoopMode);
@@ -1681,16 +2288,29 @@
             if (e.target === ui.drawerBackdrop) toggleDrawer(false);
         });
         ui.rescanBtn.addEventListener('click', () => {
-            if (isScanning) stopSubfolderScan();
             cfg.customListSelector = '';
             saveConfig();
-            scanPlaylist();
-            showToast(`已重掃目前頁面，共 ${playlist.length} 筆`);
+            setListMode('page', false);
+            scanPagePlaylist();
+            showToast(`已重掃目前頁面，共 ${pagePlaylist.length} 筆`);
         });
         ui.pickBtn.addEventListener('click', startPickListMode);
-        ui.searchInput.addEventListener('input', renderPlaylistUI);
 
-        // 進度條拖曳
+        ui.searchInput.addEventListener('input', () => {
+            const kw = getLiveSearchKeyword();
+            if (!kw && searchPlayQueue) {
+                clearSearchPlayQueue();
+            }
+            renderPlaylistUI();
+        });
+
+        ui.clearSearchBtn.addEventListener('click', () => {
+            ui.searchInput.value = '';
+            clearSearchPlayQueue();
+            renderPlaylistUI();
+            ui.searchInput.focus();
+        });
+
         ui.progress.addEventListener('pointerdown', () => { isSeeking = true; });
         ui.progress.addEventListener('input', () => {
             const pct = ui.progress.value / 10;
@@ -1708,7 +2328,6 @@
         ui.progress.addEventListener('change', finishSeek);
         ui.progress.addEventListener('pointerup', finishSeek);
 
-        // 音量調整
         ui.volRange.addEventListener('input', () => {
             if (!currentMedia) findExistingMedia();
             if (!currentMedia) return;
@@ -1717,7 +2336,6 @@
             currentMedia.muted = v === 0;
         });
 
-        // 鍵盤快捷鍵
         window.addEventListener('keydown', (e) => {
             const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
             if (tag === 'input' || tag === 'textarea' || (document.activeElement && document.activeElement.isContentEditable)) {
@@ -1734,15 +2352,24 @@
                 togglePlay();
             }
         });
+
+        updateScanControlsUI();
     }
 
     // ==========================================
-    // 7. 啟動與頁面變動監聽
+    // 8. 啟動與頁面變動監聽
     // ==========================================
     function boot() {
         mountUI();
         findExistingMedia();
-        scanPlaylist();
+        scanPagePlaylist();
+
+        // 若本頁沒有音檔但已有儲存的子資料夾庫或未完斷點，自動切到子資料夾庫分頁方便使用
+        if (pagePlaylist.length === 0 && (deepPlaylist.length > 0 || hasPendingCheckpoint())) {
+            setListMode('deep', true);
+        } else {
+            setListMode(listMode, true);
+        }
 
         let debounceTimer = null;
         const observer = new MutationObserver(() => {
@@ -1753,12 +2380,9 @@
 
                 if (location.href !== lastUrl) {
                     lastUrl = location.href;
-                    // 若正在用獨立播放器播放已掃描的跨資料夾清單，換頁時保留清單不清空
-                    if (!(isDeepScanned && currentMedia === customAudio && !customAudio.paused)) {
-                        scanPlaylist();
-                    }
-                } else if (!isDeepScanned) {
-                    if (playlist.length === 0) scanPlaylist();
+                    scanPagePlaylist();
+                } else {
+                    if (pagePlaylist.length === 0) scanPagePlaylist();
                     else syncCurrentTrackHighlight();
                 }
             }, 400);
@@ -1769,9 +2393,7 @@
             if (!currentMedia) findExistingMedia();
             if (!isScanning && location.href !== lastUrl) {
                 lastUrl = location.href;
-                if (!(isDeepScanned && currentMedia === customAudio && !customAudio.paused)) {
-                    scanPlaylist();
-                }
+                scanPagePlaylist();
             }
         }, 1800);
     }
