@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         SpankBang 全能增強：抖音模式 / 橫豎屏篩選 / Gold·Exclusive·AI分類 / 時長過濾 / 去廣告
+// @name         SpankBang 全能增強：抖音模式 / 快轉預覽 / 橫豎屏篩選 / Gold·Exclusive·AI分類 / 時長過濾 / 去廣告
 // @namespace    https://spankbang.com/
-// @version      1.0.0
-// @description  為 SpankBang 打造抖音上下滑動連刷模式（支援橫屏/豎屏/全部切換）、徹底隱藏頁面與播放器廣告、獨立分類篩選 SpankBang Gold / Exclusive / AI 標籤影片與自訂最低時長過濾。
+// @version      1.1.0
+// @description  為 SpankBang 打造抖音上下滑動連刷模式（支援快轉畫面預覽、橫屏/豎屏/全部切換）、徹底隱藏頁面與播放器廣告、獨立分類篩選 SpankBang Gold / Exclusive / AI 標籤影片與自訂最低時長過濾。
 // @match        *://spankbang.com/*
 // @match        *://*.spankbang.com/*
 // @grant        GM_addStyle
@@ -55,9 +55,11 @@
     let feedClockTimer = null;
     let feedProgressTimer = null;
     let feedGoToSlide = null;
+    let feedCleanupPreview = null;
     let feedClockShowSeconds = false;
     let consecutiveAutoSkips = 0;
 
+    // cacheKey -> { playUrl, previewUrl, vttUrl, vttCues }
     const streamCache = new Map();
     const hlsInstances = new Map();
 
@@ -153,47 +155,6 @@
         .sb-filtered-out,
         .sb-user-hidden {
             display: none !important;
-        }
-
-        /* 卡片分類徽章 */
-        .sb-tag-badges {
-            position: absolute;
-            top: 6px;
-            right: 6px;
-            z-index: 15;
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            gap: 4px;
-            pointer-events: none;
-            max-width: calc(100% - 12px);
-        }
-        .sb-tag-chip {
-            padding: 2px 6px;
-            border-radius: 5px;
-            font-size: 10.5px;
-            font-weight: 800;
-            line-height: 1.25;
-            letter-spacing: 0.02em;
-            color: #fff;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-        }
-        .sb-tag-chip.gold {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: #111827;
-        }
-        .sb-tag-chip.exclusive {
-            background: linear-gradient(135deg, #ec4899, #8b5cf6);
-        }
-        .sb-tag-chip.ai {
-            background: linear-gradient(135deg, #06b6d4, #2563eb);
-        }
-        .sb-tag-chip.orient {
-            background: rgba(15, 23, 42, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.22);
-            color: #e2e8f0;
         }
 
         /* ==================== 右下角懸浮控制面板 ==================== */
@@ -590,6 +551,97 @@
             color: #fff;
         }
 
+        /* 快轉即時預覽浮窗 */
+        #sb-feed-preview-box {
+            position: fixed;
+            left: 50%;
+            bottom: calc(146px + env(safe-area-inset-bottom, 0px));
+            transform: translateX(-50%);
+            z-index: 36;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            padding: 5px;
+            border-radius: 12px;
+            background: rgba(12, 14, 20, 0.94);
+            border: 1.5px solid rgba(245, 158, 11, 0.85);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.12s ease;
+        }
+        #sb-feed-preview-box.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        #sb-feed-preview-stage {
+            position: relative;
+            width: 216px;
+            height: 122px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #07080c;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #sb-feed-preview-stage.portrait {
+            width: 116px;
+            height: 184px;
+        }
+        #sb-feed-preview-sprite {
+            position: absolute;
+            inset: 0;
+            display: none;
+            background-repeat: no-repeat;
+            z-index: 3;
+        }
+        #sb-feed-preview-video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #07080c;
+            display: block;
+            opacity: 0;
+            transition: opacity 0.1s ease;
+            z-index: 2;
+        }
+        #sb-feed-preview-video.ready {
+            opacity: 1;
+        }
+        #sb-feed-preview-poster {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            opacity: 0.4;
+            z-index: 1;
+        }
+        #sb-feed-preview-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 4;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.72);
+            color: #fde68a;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        #sb-feed-preview-label {
+            font-size: 12.5px;
+            font-weight: 800;
+            color: #ffffff;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            padding: 1px 6px 2px;
+        }
+
         #sb-feed-hud {
             position: fixed;
             top: 44%;
@@ -933,7 +985,6 @@
     function cleanAdsOnPage() {
         if (!cfg.blockAds || feedOpen || document.hidden) return;
 
-        // 移除固定懸浮廣告條
         document.querySelectorAll('body > div, body > aside, body > section, body > a').forEach((el) => {
             if (el.id?.startsWith('sb-')) return;
             if (el.querySelector('video, #main_video_player, header, nav, main, a[href*="/video/"]')) return;
@@ -947,7 +998,6 @@
             }
         });
 
-        // 隱藏純外部廣告區塊 / 直播推廣卡片
         document.querySelectorAll('section, aside, div, li').forEach((box) => {
             if (box.classList.contains('sb-ad-hidden')) return;
             if (box.closest('#sb-float-panel, #sb-picker-bar, #sb-feed-overlay')) return;
@@ -971,7 +1021,6 @@
             }
         });
 
-        // 清理播放器內廣告遮罩與前貼片廣告
         const player = document.querySelector('#main_video_player, .video-js');
         if (player) {
             player.querySelectorAll('iframe, ins, [class*="pause-ad"], [id*="pause-ad"], a[href]').forEach((el) => {
@@ -1020,7 +1069,6 @@
         const s = String(text || '').trim().toLowerCase();
         if (!s) return -1;
 
-        // hh:mm:ss 或 mm:ss
         const colon = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
         if (colon) {
             if (colon[3] !== undefined) {
@@ -1029,7 +1077,6 @@
             return Number(colon[1]) * 60 + Number(colon[2]);
         }
 
-        // 1h 20m / 12m / 12 min / 45s
         let total = 0;
         let matched = false;
         const hM = s.match(/(\d+)\s*(?:h|hr|hrs|hour|hours)\b/);
@@ -1051,7 +1098,6 @@
             }
         });
 
-        // 備援：偵測未套用舊版 class 的新版卡片
         if (found.size === 0) {
             root.querySelectorAll('a[href*="/video/"]').forEach((a) => {
                 if (a.closest('#sb-float-panel, #sb-picker-bar, #sb-feed-overlay')) return;
@@ -1091,10 +1137,7 @@
             isAI = true;
         }
 
-        // 檢查卡片內部的連結、徽章、標籤與圖示
         card.querySelectorAll('span, div, a, p, svg, img, i, em, strong').forEach((el) => {
-            if (el.closest('.sb-tag-badges')) return;
-
             const href = el.tagName === 'A' ? (el.getAttribute('href') || '') : '';
             if (href) {
                 if (/\/gold\b|[?&]gold=/i.test(href)) isGold = true;
@@ -1115,7 +1158,6 @@
             if (/\b(?:sb-?exclusive|exclusive-?badge|badge-?exclusive|ic-?exclusive)\b/i.test(metaStr)) isExclusive = true;
             if (/\b(?:ai-?badge|badge-?ai|tag-?ai|ai-?generated|ic-?ai)\b/i.test(metaStr)) isAI = true;
 
-            // 只對葉節點或短文字徽章檢查文字，避免整張卡片大段文字誤判
             if (el.children.length === 0 || el.tagName === 'SPAN' || el.tagName === 'A') {
                 const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
                 if (txt && txt.length <= 28) {
@@ -1126,7 +1168,6 @@
             }
         });
 
-        // 標題明確包含 AI / SpankBang Gold / Exclusive 字樣
         if (title) {
             if (/\bspankbang\s+gold\b/i.test(title)) isGold = true;
             if (/\bspankbang\s+exclusive\b/i.test(title)) isExclusive = true;
@@ -1142,12 +1183,10 @@
     }
 
     function detectCardOrientation(card, img, id, title) {
-        // 1. 優先採用真實影片播放過後的精準解析度快取
         if (id && orientCache[id]?.o) {
             return { orientation: orientCache[id].o, verified: true };
         }
 
-        // 2. 明確的直式／豎屏標籤或容器 class
         const hintStr = [
             card.className,
             img?.className,
@@ -1159,7 +1198,6 @@
             return { orientation: 'portrait', verified: true };
         }
 
-        // 3. 檢查卡片內的預覽 <video> 解析度
         const previewVid = card.querySelector('video');
         if (previewVid && previewVid.videoWidth > 0 && previewVid.videoHeight > 0) {
             const o = previewVid.videoHeight > previewVid.videoWidth * 1.03 ? 'portrait' : 'landscape';
@@ -1167,7 +1205,6 @@
             return { orientation: o, verified: true };
         }
 
-        // 4. 檢查縮圖實際長寬比
         if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
             if (img.naturalHeight > img.naturalWidth * 1.05) {
                 return { orientation: 'portrait', verified: false };
@@ -1190,7 +1227,6 @@
         const img = card.querySelector('img');
         const poster = img ? (img.getAttribute('data-src') || img.dataset.src || img.getAttribute('src') || '') : '';
 
-        // 提取標題
         let title = '';
         const titleCandidates = [
             card.querySelector('a.n'),
@@ -1217,7 +1253,6 @@
         }
         if (!title) title = 'SpankBang Video';
 
-        // 提取片長
         let durationText = '';
         let durationSec = -1;
         const durEl = card.querySelector('span.video-badge.l, .l, [data-testid="video-duration"], [class*="duration"]');
@@ -1231,7 +1266,7 @@
         }
         if (durationSec < 0) {
             for (const el of card.querySelectorAll('span, div')) {
-                if (el.children.length > 0 || el.closest('.sb-tag-badges')) continue;
+                if (el.children.length > 0) continue;
                 const t = (el.textContent || '').trim();
                 if (t.length >= 2 && t.length <= 12) {
                     const sec = parseDurationToSeconds(t);
@@ -1266,16 +1301,13 @@
     function matchesFilters(meta, strictOrientation = true) {
         if (!meta) return true;
 
-        // 1. 最低片長過濾
         if (cfg.minMinutes > 0 && meta.durationSec >= 0 && meta.durationSec < cfg.minMinutes * 60) {
             return false;
         }
 
-        // 2. Gold / Exclusive / AI / 一般影片 分類顯示規則
         if (meta.isNormal) {
             if (!cfg.showNormal) return false;
         } else {
-            // 若一部影片同時帶多個特殊標籤，只要其中任一被勾選顯示就顯示；全不勾就隱藏
             const allowedSpecial =
                 (meta.isGold && cfg.showGold) ||
                 (meta.isExclusive && cfg.showExclusive) ||
@@ -1283,56 +1315,15 @@
             if (!allowedSpecial) return false;
         }
 
-        // 3. 橫屏 / 豎屏 / 全部一起
         if (cfg.orientation !== 'all') {
             if (meta.orientation !== 'unknown') {
                 if (meta.orientation !== cfg.orientation) return false;
             } else if (strictOrientation) {
-                // 尚未得知方向時保留顯示，待圖片/影片載入後再自動歸類
                 return true;
             }
         }
 
         return true;
-    }
-
-    function renderCardBadges(card, meta) {
-        const thumbWrap = card.querySelector('a.thumb, a[href*="/video/"]:has(img), picture') || card.querySelector('img')?.parentElement;
-        if (!thumbWrap) return;
-
-        if (getComputedStyle(thumbWrap).position === 'static') {
-            thumbWrap.style.position = 'relative';
-        }
-
-        let box = thumbWrap.querySelector(':scope > .sb-tag-badges');
-        const chips = [];
-        if (meta.isGold) chips.push({ cls: 'gold', txt: '👑 Gold' });
-        if (meta.isExclusive) chips.push({ cls: 'exclusive', txt: '💎 Exclusive' });
-        if (meta.isAI) chips.push({ cls: 'ai', txt: '🤖 AI' });
-        if (meta.orientation === 'portrait') chips.push({ cls: 'orient', txt: '📱 豎屏' });
-        else if (meta.orientation === 'landscape' && meta.orientationVerified) chips.push({ cls: 'orient', txt: '📺 橫屏' });
-
-        if (chips.length === 0) {
-            if (box) box.remove();
-            return;
-        }
-
-        if (!box) {
-            box = document.createElement('div');
-            box.className = 'sb-tag-badges';
-            thumbWrap.appendChild(box);
-        }
-
-        const sig = chips.map((c) => c.txt).join('|');
-        if (box.dataset.sig === sig) return;
-        box.dataset.sig = sig;
-        box.innerHTML = '';
-        chips.forEach((c) => {
-            const sp = document.createElement('span');
-            sp.className = `sb-tag-chip ${c.cls}`;
-            sp.textContent = c.txt;
-            box.appendChild(sp);
-        });
     }
 
     function processVideoCards() {
@@ -1360,7 +1351,6 @@
             card.dataset.sbAi = meta.isAI ? '1' : '0';
             card.dataset.sbOrient = meta.orientation;
 
-            // 圖片尚未載入完成時掛載一次監聽，載入後立即依實際比例更新橫豎屏過濾
             const img = card.querySelector('img');
             if (img && !img.complete && img.dataset.sbOrientBound !== '1') {
                 img.dataset.sbOrientBound = '1';
@@ -1368,13 +1358,11 @@
                     const updated = parseCardMeta(card);
                     if (updated) {
                         card.classList.toggle('sb-filtered-out', !matchesFilters(updated, true));
-                        renderCardBadges(card, updated);
                         updatePanelCounts();
                     }
                 }, { once: true });
             }
 
-            // 預覽影片載入後同步記錄精準長寬比
             const previewVid = card.querySelector('video');
             if (previewVid && previewVid.dataset.sbOrientBound !== '1') {
                 previewVid.dataset.sbOrientBound = '1';
@@ -1389,12 +1377,8 @@
 
             const visible = matchesFilters(meta, true);
             card.classList.toggle('sb-filtered-out', !visible);
-            if (visible) {
-                counts.shown++;
-                renderCardBadges(card, meta);
-            } else {
-                counts.hidden++;
-            }
+            if (visible) counts.shown++;
+            else counts.hidden++;
         });
 
         updatePanelCounts(counts);
@@ -1432,7 +1416,7 @@
         setTxt('#sb-stats-line', `本頁顯示 ${counts.shown} / ${counts.total} 部（已過濾 ${counts.hidden} 部）`);
     }
 
-    // ==================== 4. SpankBang 串流解析與下一頁抓取 ====================
+    // ==================== 4. SpankBang 串流與預覽流解析 ====================
     function formatSec(sec) {
         const s = Math.max(0, Math.floor(Number(sec) || 0));
         const h = Math.floor(s / 3600);
@@ -1442,22 +1426,87 @@
         return h > 0 ? `${h}:${pad(m)}:${pad(r)}` : `${pad(m)}:${pad(r)}`;
     }
 
+    function parseVttTime(str) {
+        const parts = String(str || '').trim().split(':');
+        if (parts.length === 3) {
+            return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2]);
+        }
+        if (parts.length === 2) {
+            return Number(parts[0]) * 60 + Number(parts[1]);
+        }
+        return 0;
+    }
+
+    function parseThumbnailVtt(vttText, baseUrl) {
+        const cues = [];
+        const lines = String(vttText || '').replace(/\r/g, '').split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line.includes('-->')) continue;
+            const [rawStart, rawEnd] = line.split('-->').map((s) => s.trim().split(' ')[0]);
+            const start = parseVttTime(rawStart);
+            const end = parseVttTime(rawEnd);
+            let payload = '';
+            while (i + 1 < lines.length) {
+                const next = lines[++i].trim();
+                if (!next) break;
+                if (!payload) payload = next;
+            }
+            if (!payload) continue;
+            const [rawImg, hash] = payload.split('#');
+            let imgUrl = '';
+            try { imgUrl = new URL(rawImg, baseUrl).href; } catch { continue; }
+            const xywh = hash ? hash.match(/xywh=(\d+),(\d+),(\d+),(\d+)/i) : null;
+            cues.push({
+                start,
+                end,
+                url: imgUrl,
+                x: xywh ? Number(xywh[1]) : 0,
+                y: xywh ? Number(xywh[2]) : 0,
+                w: xywh ? Number(xywh[3]) : 0,
+                h: xywh ? Number(xywh[4]) : 0
+            });
+        }
+        return cues;
+    }
+
     function getCookie(name) {
         const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
         return m ? decodeURIComponent(m[1]) : '';
     }
 
-    function pickBestStreamFromObj(obj) {
-        if (!obj || typeof obj !== 'object') return '';
-        const priority = ['720p', '1080p', '480p', 'm3u8_720p', 'm3u8_1080p', 'm3u8', 'm3u8_480p', '320p', '240p', '4k', 'main'];
-        for (const k of priority) {
-            const val = obj[k];
-            const url = Array.isArray(val) ? val[0] : val;
-            if (typeof url === 'string' && /^https?:\/\//i.test(url) && !AD_DOMAIN_RE.test(url)) {
-                return url.replace(/\\\//g, '/');
+    function pickStreamPairFromObj(obj) {
+        if (!obj || typeof obj !== 'object') return { playUrl: '', previewUrl: '' };
+
+        const pickFirst = (keys, preferMp4Only = false) => {
+            for (const k of keys) {
+                const val = obj[k];
+                const raw = Array.isArray(val) ? val[0] : val;
+                if (typeof raw !== 'string') continue;
+                const clean = raw.replace(/\\\//g, '/').replace(/&amp;/g, '&').trim();
+                if (!/^https?:\/\//i.test(clean) || AD_DOMAIN_RE.test(clean)) continue;
+                if (preferMp4Only && /\.m3u8(?:\?|$)/i.test(clean)) continue;
+                return clean;
             }
+            return '';
+        };
+
+        const playUrl = pickFirst(['720p', '1080p', '480p', 'm3u8_720p', 'm3u8_1080p', 'm3u8', 'm3u8_480p', '320p', '240p', '4k', 'main'], false);
+        const previewUrl = pickFirst(['240p', '320p', '480p', '720p', '1080p', 'main'], true);
+        return { playUrl, previewUrl };
+    }
+
+    function extractVttUrlFromHtml(html, baseUrl) {
+        const m =
+            html.match(/<track[^>]+src=["']([^"']+\.vtt[^"']*)["']/i) ||
+            html.match(/["'](https?:\/\/[^"'\s<>]+\.vtt(?:\?[^"'\s<>]*)?)["']/i) ||
+            html.match(/["'](\/\/[^"'\s<>]+\.vtt(?:\?[^"'\s<>]*)?)["']/i);
+        if (!m || !m[1]) return '';
+        try {
+            return new URL(m[1].replace(/\\\//g, '/').replace(/&amp;/g, '&'), baseUrl).href;
+        } catch {
+            return '';
         }
-        return '';
     }
 
     function parseStreamDataFromHtml(html) {
@@ -1471,10 +1520,25 @@
                 const m = block.match(re);
                 if (m && m[1]) extracted[k] = m[1].replace(/\\\//g, '/').replace(/&amp;/g, '&');
             }
-            const best = pickBestStreamFromObj(extracted);
-            if (best) return best;
+            return pickStreamPairFromObj(extracted);
         }
-        return '';
+        return { playUrl: '', previewUrl: '' };
+    }
+
+    async function loadVttCuesIfPossible(bundle) {
+        if (!bundle || !bundle.vttUrl || bundle.vttLoaded) return bundle?.vttCues || null;
+        bundle.vttLoaded = true;
+        try {
+            const res = await fetch(bundle.vttUrl, { credentials: 'omit' });
+            if (!res.ok) return null;
+            const txt = await res.text();
+            const cues = parseThumbnailVtt(txt, bundle.vttUrl);
+            if (cues.length > 0) {
+                bundle.vttCues = cues;
+                return cues;
+            }
+        } catch {}
+        return null;
     }
 
     async function resolveSpankBangStream(item) {
@@ -1483,36 +1547,43 @@
             return streamCache.get(cacheKey);
         }
 
-        // 若目標正是目前開啟的播放頁，優先讀取頁內現有 stream_data 與播放器 src
+        // 若目標為當前播放頁，直接取用頁內資料
         try {
             const curU = new URL(location.href);
             const itemU = new URL(item.url, location.origin);
             if (curU.pathname === itemU.pathname) {
                 const pageWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-                const liveBest = pickBestStreamFromObj(pageWin?.stream_data || window.stream_data);
-                if (liveBest) {
-                    streamCache.set(cacheKey, liveBest);
-                    return liveBest;
+                const livePair = pickStreamPairFromObj(pageWin?.stream_data || window.stream_data);
+                const liveTrack = document.querySelector('#main_video_player track[src*=".vtt"], track[src*=".vtt"]');
+                const vttUrl = liveTrack ? new URL(liveTrack.getAttribute('src'), location.href).href : '';
+                if (livePair.playUrl) {
+                    const bundle = { playUrl: livePair.playUrl, previewUrl: livePair.previewUrl, vttUrl, vttCues: null, vttLoaded: false };
+                    streamCache.set(cacheKey, bundle);
+                    return bundle;
                 }
                 const liveVid = document.querySelector('#main_video_player_html5_api, #main_video_player video, video');
                 const liveSrc = liveVid?.currentSrc || liveVid?.src || '';
                 if (liveSrc && !liveSrc.startsWith('blob:') && !AD_DOMAIN_RE.test(liveSrc)) {
-                    streamCache.set(cacheKey, liveSrc);
-                    return liveSrc;
+                    const isHls = /\.m3u8(?:\?|$)/i.test(liveSrc);
+                    const bundle = { playUrl: liveSrc, previewUrl: isHls ? '' : liveSrc, vttUrl, vttCues: null, vttLoaded: false };
+                    streamCache.set(cacheKey, bundle);
+                    return bundle;
                 }
             }
         } catch {}
 
         try {
             const res = await fetch(item.url, { credentials: 'include' });
-            if (!res.ok) return '';
+            if (!res.ok) return null;
             const html = await res.text();
+            const vttUrl = extractVttUrlFromHtml(html, item.url);
 
             // 1. 解析頁內 stream_data
-            const fromStreamData = parseStreamDataFromHtml(html);
-            if (fromStreamData) {
-                streamCache.set(cacheKey, fromStreamData);
-                return fromStreamData;
+            const pair = parseStreamDataFromHtml(html);
+            if (pair.playUrl) {
+                const bundle = { playUrl: pair.playUrl, previewUrl: pair.previewUrl, vttUrl, vttCues: null, vttLoaded: false };
+                streamCache.set(cacheKey, bundle);
+                return bundle;
             }
 
             // 2. 備援：呼叫 /api/videos/stream
@@ -1535,35 +1606,40 @@
                     });
                     if (apiRes.ok) {
                         const json = await apiRes.json();
-                        const best = pickBestStreamFromObj(json);
-                        if (best) {
-                            streamCache.set(cacheKey, best);
-                            return best;
+                        const apiPair = pickStreamPairFromObj(json);
+                        if (apiPair.playUrl) {
+                            const bundle = { playUrl: apiPair.playUrl, previewUrl: apiPair.previewUrl, vttUrl, vttCues: null, vttLoaded: false };
+                            streamCache.set(cacheKey, bundle);
+                            return bundle;
                         }
                     }
                 } catch {}
             }
 
-            // 3. 備援：直接找 HTML 內的 <source> 或 mp4/m3u8 網址（排除縮圖預覽）
+            // 3. 備援：直接找 HTML 內的 <source> 或 mp4/m3u8
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const srcEl = doc.querySelector('#main_video_player source[src], video source[src], video[src]');
             const rawDomSrc = srcEl?.getAttribute('src') || '';
             if (rawDomSrc && !rawDomSrc.startsWith('blob:') && !AD_DOMAIN_RE.test(rawDomSrc)) {
                 const abs = new URL(rawDomSrc, item.url).href;
-                streamCache.set(cacheKey, abs);
-                return abs;
+                const isHls = /\.m3u8(?:\?|$)/i.test(abs);
+                const bundle = { playUrl: abs, previewUrl: isHls ? '' : abs, vttUrl, vttCues: null, vttLoaded: false };
+                streamCache.set(cacheKey, bundle);
+                return bundle;
             }
 
             const directMatches = html.match(/https?:\/\/[^"'\\\s<>]+\.(?:mp4|m3u8)(?:\?[^"'\\\s<>]*)?/gi) || [];
             const validDirect = directMatches.find((u) => !AD_DOMAIN_RE.test(u) && !/\/t\.|thumb|preview|sprite/i.test(u));
             if (validDirect) {
                 const clean = validDirect.replace(/&amp;/g, '&');
-                streamCache.set(cacheKey, clean);
-                return clean;
+                const isHls = /\.m3u8(?:\?|$)/i.test(clean);
+                const bundle = { playUrl: clean, previewUrl: isHls ? '' : clean, vttUrl, vttCues: null, vttLoaded: false };
+                streamCache.set(cacheKey, bundle);
+                return bundle;
             }
         } catch {}
 
-        return '';
+        return null;
     }
 
     function ensureHlsLibrary() {
@@ -1641,7 +1717,6 @@
                 try { return new URL(href, baseUrl).href; } catch {}
             }
         }
-        // 文字比對 Next / › / »
         for (const a of doc.querySelectorAll('.pagination a[href], nav a[href]')) {
             const txt = (a.textContent || '').trim();
             if (/^(?:next|下一[頁页]|›|»|>>)$/i.test(txt)) {
@@ -1667,14 +1742,12 @@
             if (seen.has(key)) return;
 
             if (!matchesFilters(meta, !allowRelaxedOrientation)) {
-                // 若允許放寬縮圖方向（供抖音模式靠真實影片解析度判別），仍嚴格套用時長與特殊標籤規則
                 if (!allowRelaxedOrientation) return;
                 const savedOrient = cfg.orientation;
                 cfg.orientation = 'all';
                 const passNonOrient = matchesFilters(meta, false);
                 cfg.orientation = savedOrient;
                 if (!passNonOrient) return;
-                // 若已透過真實影片確認方向不符，直接排除
                 if (meta.orientationVerified && meta.orientation !== cfg.orientation) return;
             }
 
@@ -1685,7 +1758,7 @@
         return list;
     }
 
-    // ==================== 5. 抖音模式 ====================
+    // ==================== 5. 抖音模式（含快轉畫面預覽） ====================
     function orientLabel(mode) {
         if (mode === 'landscape') return '📺 橫屏';
         if (mode === 'portrait') return '📱 豎屏';
@@ -1728,7 +1801,6 @@
         let items = [];
         const seen = new Set();
 
-        // 若目前正在單支影片播放頁，將本頁影片放第一順位
         if (/\/video\//.test(location.pathname)) {
             const curId = extractVideoId(location.href);
             const h1 = document.querySelector('h1.main_content_title, h1');
@@ -1760,7 +1832,6 @@
 
         let pageItems = collectItemsFromDoc(document, false);
         let relaxedHint = false;
-        // 若選了豎屏但縮圖全為 16:9 導致列表為 0，放寬進入抖音並依真實影片寬高自動過濾
         if (pageItems.length === 0 && cfg.orientation !== 'all') {
             pageItems = collectItemsFromDoc(document, true);
             if (pageItems.length > 0) relaxedHint = true;
@@ -1813,6 +1884,15 @@
                 </div>
             </div>
             <div id="sb-feed-track" class="sb-feed-track"></div>
+            <div id="sb-feed-preview-box">
+                <div id="sb-feed-preview-stage">
+                    <img id="sb-feed-preview-poster" src="" alt="" />
+                    <video id="sb-feed-preview-video" muted playsinline webkit-playsinline preload="metadata"></video>
+                    <div id="sb-feed-preview-sprite"></div>
+                    <div id="sb-feed-preview-loading">⏳ 預覽</div>
+                </div>
+                <div id="sb-feed-preview-label">00:00 / 00:00</div>
+            </div>
             <div id="sb-feed-bottom-dock">
                 <div id="sb-feed-meta"></div>
                 <div id="sb-feed-title"></div>
@@ -1857,6 +1937,24 @@
         const drawerEl = overlay.querySelector('#sb-feed-drawer');
         const drawerGrid = overlay.querySelector('#sb-drawer-grid');
 
+        // 快轉預覽 DOM 與狀態
+        const previewBox = overlay.querySelector('#sb-feed-preview-box');
+        const previewStage = overlay.querySelector('#sb-feed-preview-stage');
+        const previewPoster = overlay.querySelector('#sb-feed-preview-poster');
+        const previewVideo = overlay.querySelector('#sb-feed-preview-video');
+        const previewSprite = overlay.querySelector('#sb-feed-preview-sprite');
+        const previewLoading = overlay.querySelector('#sb-feed-preview-loading');
+        const previewLabel = overlay.querySelector('#sb-feed-preview-label');
+
+        let previewLoadedKey = '';
+        let previewVideoUrl = '';
+        let previewTargetSec = null;
+        let previewLastSeekTs = 0;
+        let previewSeekTimer = null;
+        let mainLiveSeekLastTs = 0;
+        let mainWasPlayingBeforeScrub = false;
+        let usingMainLiveFallback = false;
+
         let scrubbing = false;
         let hudHideTimer = null;
 
@@ -1870,6 +1968,206 @@
             clearTimeout(hudHideTimer);
             if (durationMs > 0) {
                 hudHideTimer = setTimeout(() => hud.classList.remove('show'), durationMs);
+            }
+        };
+
+        // ==================== 快轉畫面預覽引擎 ====================
+        const resetPreviewMedia = () => {
+            clearTimeout(previewSeekTimer);
+            previewSeekTimer = null;
+            previewTargetSec = null;
+            previewLoadedKey = '';
+            previewVideoUrl = '';
+            previewBox.classList.remove('show');
+            previewVideo.classList.remove('ready');
+            previewSprite.style.display = 'none';
+            previewLoading.style.display = 'none';
+            try {
+                previewVideo.pause();
+                previewVideo.removeAttribute('src');
+                previewVideo.load();
+            } catch {}
+        };
+        feedCleanupPreview = resetPreviewMedia;
+
+        const executePreviewVideoSeek = (sec) => {
+            if (!previewVideoUrl || previewVideo.readyState < 1) return;
+            const dur = Number.isFinite(previewVideo.duration) ? previewVideo.duration : 0;
+            const clamped = dur > 0 ? Math.max(0, Math.min(dur - 0.1, sec)) : Math.max(0, sec);
+            previewLastSeekTs = Date.now();
+            try {
+                if (typeof previewVideo.fastSeek === 'function') {
+                    previewVideo.fastSeek(clamped);
+                } else {
+                    previewVideo.currentTime = clamped;
+                }
+            } catch {
+                try { previewVideo.currentTime = clamped; } catch {}
+            }
+        };
+
+        const schedulePreviewVideoSeek = (sec) => {
+            previewTargetSec = sec;
+            if (!previewVideoUrl || previewVideo.readyState < 1) return;
+            if (previewVideo.seeking) return;
+
+            const elapsed = Date.now() - previewLastSeekTs;
+            clearTimeout(previewSeekTimer);
+            if (elapsed >= 85) {
+                executePreviewVideoSeek(sec);
+            } else {
+                previewSeekTimer = setTimeout(() => {
+                    if (previewTargetSec !== null && !previewVideo.seeking) {
+                        executePreviewVideoSeek(previewTargetSec);
+                    }
+                }, 85 - elapsed);
+            }
+        };
+
+        previewVideo.addEventListener('loadedmetadata', () => {
+            if (previewVideo.videoWidth > 0 && previewVideo.videoHeight > 0) {
+                previewStage.classList.toggle('portrait', previewVideo.videoHeight > previewVideo.videoWidth * 1.03);
+            }
+            if (previewTargetSec !== null) {
+                executePreviewVideoSeek(previewTargetSec);
+            }
+        });
+
+        previewVideo.addEventListener('seeked', () => {
+            previewVideo.classList.add('ready');
+            previewLoading.style.display = 'none';
+            if (previewTargetSec !== null && Math.abs((previewVideo.currentTime || 0) - previewTargetSec) > 0.65) {
+                executePreviewVideoSeek(previewTargetSec);
+            }
+        });
+
+        previewVideo.addEventListener('error', () => {
+            previewVideoUrl = '';
+            previewVideo.classList.remove('ready');
+        });
+
+        const renderVttSpriteAt = (cues, sec) => {
+            if (!Array.isArray(cues) || cues.length === 0) return false;
+            const cue = cues.find((c) => sec >= c.start && sec <= c.end) ||
+                cues.reduce((prev, cur) => (Math.abs(cur.start - sec) < Math.abs(prev.start - sec) ? cur : prev), cues[0]);
+            if (!cue || !cue.url) return false;
+
+            previewSprite.style.display = 'block';
+            previewLoading.style.display = 'none';
+            previewSprite.style.backgroundImage = `url("${cue.url}")`;
+
+            if (cue.w > 0 && cue.h > 0) {
+                const isPort = cue.h > cue.w * 1.03;
+                previewStage.classList.toggle('portrait', isPort);
+                const stageW = previewStage.clientWidth || (isPort ? 116 : 216);
+                const stageH = previewStage.clientHeight || (isPort ? 184 : 122);
+                const scale = Math.min(stageW / cue.w, stageH / cue.h);
+                previewSprite.style.width = `${cue.w}px`;
+                previewSprite.style.height = `${cue.h}px`;
+                previewSprite.style.left = '50%';
+                previewSprite.style.top = '50%';
+                previewSprite.style.backgroundPosition = `-${cue.x}px -${cue.y}px`;
+                previewSprite.style.backgroundSize = 'auto';
+                previewSprite.style.transform = `translate(-50%, -50%) scale(${scale})`;
+            } else {
+                previewSprite.style.width = '100%';
+                previewSprite.style.height = '100%';
+                previewSprite.style.left = '0';
+                previewSprite.style.top = '0';
+                previewSprite.style.backgroundPosition = 'center';
+                previewSprite.style.backgroundSize = 'contain';
+                previewSprite.style.transform = 'none';
+            }
+            return true;
+        };
+
+        const showSeekPreview = (targetSec, duration, labelText, anchorClientX = null, allowMainFallback = true) => {
+            const item = feedItems[feedIndex];
+            const curVideo = getCurrentVideo();
+            if (!item || !Number.isFinite(duration) || duration <= 0) return;
+
+            const cacheKey = item.id || item.url;
+            const bundle = streamCache.get(cacheKey);
+            const isPortrait = curVideo && curVideo.videoHeight > curVideo.videoWidth * 1.03;
+            previewStage.classList.toggle('portrait', Boolean(isPortrait || item.orientation === 'portrait'));
+
+            if (previewPoster.src !== (item.poster || '')) {
+                previewPoster.src = item.poster || '';
+                previewPoster.style.display = item.poster ? 'block' : 'none';
+            }
+
+            previewLabel.textContent = labelText || `${formatSec(targetSec)} / ${formatSec(duration)}`;
+
+            // 橫向定位：拖曳進度條時跟隨手指/滑鼠，橫滑手勢時置中顯示
+            if (typeof anchorClientX === 'number' && Number.isFinite(anchorClientX)) {
+                const halfW = (previewBox.offsetWidth || 226) / 2;
+                const clampedX = Math.max(halfW + 10, Math.min(window.innerWidth - halfW - 10, anchorClientX));
+                previewBox.style.left = `${clampedX}px`;
+                previewBox.style.bottom = `calc(146px + env(safe-area-inset-bottom, 0px))`;
+            } else {
+                previewBox.style.left = '50%';
+                previewBox.style.bottom = `calc(168px + env(safe-area-inset-bottom, 0px))`;
+            }
+
+            // 1. 若有 VTT 縮圖雪碧圖，優先零延遲顯示
+            if (bundle?.vttCues && bundle.vttCues.length > 0) {
+                previewBox.classList.add('show');
+                previewVideo.style.display = 'none';
+                renderVttSpriteAt(bundle.vttCues, targetSec);
+                return;
+            }
+
+            // 2. 若有 MP4 預覽流，使用獨立低畫質預覽播放器顯示真實畫面
+            if (bundle?.previewUrl) {
+                previewBox.classList.add('show');
+                previewSprite.style.display = 'none';
+                previewVideo.style.display = 'block';
+
+                if (previewLoadedKey !== cacheKey || previewVideoUrl !== bundle.previewUrl) {
+                    previewLoadedKey = cacheKey;
+                    previewVideoUrl = bundle.previewUrl;
+                    previewVideo.classList.remove('ready');
+                    previewLoading.style.display = 'block';
+                    previewVideo.src = bundle.previewUrl;
+                    previewVideo.load();
+                } else if (!previewVideo.classList.contains('ready')) {
+                    previewLoading.style.display = 'block';
+                }
+                schedulePreviewVideoSeek(targetSec);
+                return;
+            }
+
+            // 3. 純 HLS 備援：直接在主影片即時節流預覽畫面＋顯示時間膠囊
+            if (allowMainFallback && curVideo) {
+                if (!usingMainLiveFallback) {
+                    usingMainLiveFallback = true;
+                    mainWasPlayingBeforeScrub = !curVideo.paused;
+                    try { curVideo.pause(); } catch {}
+                }
+                const now = Date.now();
+                if (now - mainLiveSeekLastTs >= 130) {
+                    mainLiveSeekLastTs = now;
+                    try { curVideo.currentTime = targetSec; } catch {}
+                }
+                showFeedHud(labelText || `${formatSec(targetSec)} / ${formatSec(duration)}`, 0);
+            }
+        };
+
+        const hideSeekPreview = (commitFinalSec = null) => {
+            clearTimeout(previewSeekTimer);
+            previewSeekTimer = null;
+            previewBox.classList.remove('show');
+            hud.classList.remove('show');
+
+            const curVideo = getCurrentVideo();
+            if (curVideo && commitFinalSec !== null && Number.isFinite(curVideo.duration)) {
+                curVideo.currentTime = Math.max(0, Math.min(curVideo.duration, commitFinalSec));
+            }
+            if (usingMainLiveFallback) {
+                usingMainLiveFallback = false;
+                if (curVideo && mainWasPlayingBeforeScrub) {
+                    curVideo.play().catch(() => {});
+                }
             }
         };
 
@@ -1995,7 +2293,6 @@
                         if (idx === feedIndex) {
                             syncBottomDockToItem(item, vw, vh);
 
-                            // 若開啟橫屏/豎屏篩選且實際比例不符，自動跳至下一部
                             if (cfg.orientation !== 'all' && actualOrient !== cfg.orientation) {
                                 video.pause();
                                 if (consecutiveAutoSkips < 12 && feedIndex < feedItems.length - 1) {
@@ -2100,6 +2397,7 @@
             const item = feedItems[idx];
             if (!item) return;
 
+            resetPreviewMedia();
             hud.classList.remove('show');
             rangeEl.value = '0';
             timeEl.textContent = '00:00 / 00:00';
@@ -2131,7 +2429,6 @@
             const statusEl = activeSlide?.querySelector('.sb-feed-status');
             if (!video) return;
 
-            // 若已知實際方向不符，直接略過
             if (cfg.orientation !== 'all' && item.orientationVerified && item.orientation !== cfg.orientation) {
                 if (consecutiveAutoSkips < 12 && idx < feedItems.length - 1) {
                     consecutiveAutoSkips++;
@@ -2151,14 +2448,14 @@
                     statusEl.textContent = '⏳ 正在解析影片串流...';
                     statusEl.style.display = 'block';
                 }
-                const streamUrl = await resolveSpankBangStream(item);
+                const bundle = await resolveSpankBangStream(item);
                 if (!feedOpen || idx !== feedIndex) return;
 
                 const latestSlide = getSlide(idx);
                 const latestVideo = latestSlide?.querySelector('video');
                 if (!latestVideo) return;
 
-                if (!streamUrl) {
+                if (!bundle || !bundle.playUrl) {
                     if (statusEl) {
                         statusEl.textContent = '⚠️ 無法解析串流（可能需要登入或為付費影片），請上滑下一部';
                         statusEl.style.display = 'block';
@@ -2166,25 +2463,32 @@
                     return;
                 }
 
+                // 背景嘗試載入 VTT 縮圖（若有）以供零延遲預覽
+                if (bundle.vttUrl && !bundle.vttLoaded) {
+                    loadVttCuesIfPossible(bundle).catch(() => {});
+                }
+
                 latestSlide.dataset.loaded = '1';
                 latestVideo.muted = Boolean(cfg.feedMuted);
                 latestVideo.playbackRate = Number(cfg.playbackRate) || 1.0;
-                const mode = await attachStreamToVideo(latestVideo, streamUrl, idx, tryPlayVideo);
+                const mode = await attachStreamToVideo(latestVideo, bundle.playUrl, idx, tryPlayVideo);
                 if (!feedOpen || idx !== feedIndex) return;
                 if (mode !== 'hls') tryPlayVideo(latestVideo);
             } else {
+                const bundle = streamCache.get(item.id || item.url);
+                if (bundle?.vttUrl && !bundle.vttLoaded) {
+                    loadVttCuesIfPossible(bundle).catch(() => {});
+                }
                 if (video.videoWidth > 0 && video.videoHeight > 0) {
                     syncBottomDockToItem(item, video.videoWidth, video.videoHeight);
                 }
                 tryPlayVideo(video);
             }
 
-            // 預先解析下一部串流
             if (idx + 1 < feedItems.length) {
                 resolveSpankBangStream(feedItems[idx + 1]).catch(() => {});
             }
 
-            // 接近清單尾端時自動抓下一頁
             if (idx >= feedItems.length - 3) {
                 loadMoreFeedItemsFromNextPage();
             }
@@ -2202,26 +2506,67 @@
         };
         feedGoToSlide = goToSlide;
 
-        // 進度條拖曳
-        rangeEl.addEventListener('pointerdown', (e) => { e.stopPropagation(); scrubbing = true; });
-        rangeEl.addEventListener('touchstart', (e) => { e.stopPropagation(); scrubbing = true; }, { passive: true });
+        // 底部進度條拖曳＋滑鼠懸停即時預覽
+        const calcRangeThumbX = (ratio) => {
+            const rect = rangeEl.getBoundingClientRect();
+            return rect.left + Math.max(0, Math.min(1, ratio)) * rect.width;
+        };
+
+        rangeEl.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            scrubbing = true;
+            const curVideo = getCurrentVideo();
+            if (curVideo && Number.isFinite(curVideo.duration) && curVideo.duration > 0) {
+                const ratio = Number(rangeEl.value) / 1000;
+                const sec = ratio * curVideo.duration;
+                showSeekPreview(sec, curVideo.duration, `${formatSec(sec)} / ${formatSec(curVideo.duration)}`, e.clientX || calcRangeThumbX(ratio), true);
+            }
+        });
+        rangeEl.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            scrubbing = true;
+        }, { passive: true });
+
         rangeEl.addEventListener('input', (e) => {
             e.stopPropagation();
             const curVideo = getCurrentVideo();
             if (curVideo && Number.isFinite(curVideo.duration) && curVideo.duration > 0) {
-                const preview = (Number(rangeEl.value) / 1000) * curVideo.duration;
-                timeEl.textContent = `${formatSec(preview)} / ${formatSec(curVideo.duration)}`;
+                const ratio = Number(rangeEl.value) / 1000;
+                const sec = ratio * curVideo.duration;
+                const label = `${formatSec(sec)} / ${formatSec(curVideo.duration)}`;
+                timeEl.textContent = label;
+                showSeekPreview(sec, curVideo.duration, label, calcRangeThumbX(ratio), true);
             }
         });
-        const commitScrub = () => {
+
+        // 電腦版滑鼠移到進度條上即可看到對應時間畫面預覽
+        rangeEl.addEventListener('pointermove', (e) => {
+            if (e.pointerType !== 'mouse' || scrubbing) return;
             const curVideo = getCurrentVideo();
-            if (curVideo && Number.isFinite(curVideo.duration) && curVideo.duration > 0) {
-                curVideo.currentTime = (Number(rangeEl.value) / 1000) * curVideo.duration;
-            }
+            if (!curVideo || !Number.isFinite(curVideo.duration) || curVideo.duration <= 0) return;
+            const rect = rangeEl.getBoundingClientRect();
+            if (rect.width <= 0) return;
+            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const sec = ratio * curVideo.duration;
+            showSeekPreview(sec, curVideo.duration, `${formatSec(sec)} / ${formatSec(curVideo.duration)}`, e.clientX, false);
+        });
+        rangeEl.addEventListener('pointerleave', () => {
+            if (!scrubbing) hideSeekPreview(null);
+        });
+
+        const commitScrub = () => {
+            if (!scrubbing) return;
             scrubbing = false;
+            const curVideo = getCurrentVideo();
+            const finalSec = (curVideo && Number.isFinite(curVideo.duration) && curVideo.duration > 0)
+                ? (Number(rangeEl.value) / 1000) * curVideo.duration
+                : null;
+            hideSeekPreview(finalSec);
         };
         rangeEl.addEventListener('change', (e) => { e.stopPropagation(); commitScrub(); });
         rangeEl.addEventListener('pointerup', (e) => { e.stopPropagation(); commitScrub(); });
+        rangeEl.addEventListener('touchend', (e) => { e.stopPropagation(); commitScrub(); }, { passive: true });
+        rangeEl.addEventListener('pointercancel', () => commitScrub());
 
         // 控制列按鈕
         overlay.querySelectorAll('[data-fseek]').forEach((btn) => {
@@ -2274,7 +2619,6 @@
             }
         });
 
-        // 抖音模式頂部即時切換 全部 / 橫屏 / 豎屏
         orientBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const order = ['all', 'landscape', 'portrait'];
@@ -2295,7 +2639,7 @@
             }
         });
 
-        // 觸控滑動手勢（上下切集 / 左右快轉 / 單擊暫停 / 雙擊±10s）
+        // 觸控滑動手勢（上下切集 / 左右快轉即時畫面預覽 / 單擊暫停 / 雙擊±10s）
         let tStartX = 0, tStartY = 0, gestureMode = null, scrubStartTime = 0, lastTapTs = 0;
 
         track.addEventListener('touchstart', (e) => {
@@ -2329,7 +2673,10 @@
                     const mult = absY > 90 ? 4 : (absY > 40 ? 2 : 1);
                     const deltaSec = Math.round((dx / Math.max(240, window.innerWidth)) * 90 * mult);
                     const targetSec = Math.max(0, Math.min(curVideo.duration, scrubStartTime + deltaSec));
-                    showFeedHud(`${deltaSec >= 0 ? '⏩ +' : '⏪ '}${deltaSec}s (${formatSec(targetSec)}) [${mult}x]`, 0);
+                    const label = `${deltaSec >= 0 ? '⏩ +' : '⏪ '}${deltaSec}s · ${formatSec(targetSec)} / ${formatSec(curVideo.duration)} [${mult}x]`;
+                    rangeEl.value = String(Math.round((targetSec / curVideo.duration) * 1000));
+                    timeEl.textContent = `${formatSec(targetSec)} / ${formatSec(curVideo.duration)}`;
+                    showSeekPreview(targetSec, curVideo.duration, label, null, true);
                 }
             }
         }, { passive: true });
@@ -2346,16 +2693,17 @@
                 else if (dy >= threshold && feedIndex > 0) goToSlide(feedIndex - 1);
                 else goToSlide(feedIndex);
             } else if (gestureMode === 'horizontal') {
-                hud.classList.remove('show');
                 const curVideo = getCurrentVideo();
+                let finalSec = null;
                 if (curVideo && Number.isFinite(curVideo.duration) && curVideo.duration > 0) {
                     const absY = Math.abs(dy);
                     const mult = absY > 90 ? 4 : (absY > 40 ? 2 : 1);
                     const deltaSec = Math.round((dx / Math.max(240, window.innerWidth)) * 90 * mult);
                     if (Math.abs(deltaSec) >= 2) {
-                        curVideo.currentTime = Math.max(0, Math.min(curVideo.duration, scrubStartTime + deltaSec));
+                        finalSec = Math.max(0, Math.min(curVideo.duration, scrubStartTime + deltaSec));
                     }
                 }
+                hideSeekPreview(finalSec);
             } else if (Math.hypot(dx, dy) < 10 && !e.target.closest('button, input, a')) {
                 const now = Date.now();
                 const curSlide = getSlide(feedIndex);
@@ -2384,6 +2732,11 @@
                 }
                 lastTapTs = now;
             }
+            gestureMode = null;
+        }, { passive: true });
+
+        track.addEventListener('touchcancel', () => {
+            if (gestureMode === 'horizontal') hideSeekPreview(null);
             gestureMode = null;
         }, { passive: true });
 
@@ -2422,6 +2775,10 @@
         if (feedProgressTimer) {
             clearInterval(feedProgressTimer);
             feedProgressTimer = null;
+        }
+        if (feedCleanupPreview) {
+            try { feedCleanupPreview(); } catch {}
+            feedCleanupPreview = null;
         }
         feedGoToSlide = null;
         feedOpen = false;
@@ -2737,7 +3094,6 @@
         `;
         document.body.appendChild(panel);
 
-        // 拖曳移動控制面板
         const head = panel.querySelector('#sb-panel-head');
         let dragging = false, sx = 0, sy = 0, ol = 0, ot = 0;
         head.addEventListener('pointerdown', (e) => {
@@ -2758,11 +3114,9 @@
         });
         head.addEventListener('pointerup', () => { dragging = false; });
 
-        // 抖音模式入口
         panel.querySelector('#sb-btn-feed').addEventListener('click', () => openFeedMode(0));
         panel.querySelector('#sb-btn-feed-mini').addEventListener('click', () => openFeedMode(0));
 
-        // 收合切換
         panel.querySelector('#sb-panel-toggle').addEventListener('click', () => {
             cfg.panelCollapsed = !cfg.panelCollapsed;
             saveCfg();
@@ -2770,7 +3124,6 @@
             panel.querySelector('#sb-panel-toggle').textContent = cfg.panelCollapsed ? '展開' : '收合';
         });
 
-        // 橫屏 / 豎屏 / 全部
         panel.querySelectorAll('[data-orient]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 cfg.orientation = btn.dataset.orient;
@@ -2781,7 +3134,6 @@
             });
         });
 
-        // Gold / Exclusive / AI / 一般影片 個別開關
         const bindTagToggle = (id, key, label) => {
             panel.querySelector(id).addEventListener('click', () => {
                 cfg[key] = !cfg[key];
@@ -2796,7 +3148,6 @@
         bindTagToggle('#sb-tag-exclusive', 'showExclusive', '💎 Exclusive');
         bindTagToggle('#sb-tag-ai', 'showAI', '🤖 AI 標籤');
 
-        // 標籤快捷預設
         panel.querySelector('#sb-preset-all').addEventListener('click', () => {
             cfg.showNormal = true;
             cfg.showGold = true;
@@ -2828,7 +3179,6 @@
             showToast('✨ 目前僅顯示 Gold / Exclusive / AI 影片');
         });
 
-        // 片長過濾按鈕
         panel.querySelectorAll('[data-dur]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 cfg.minMinutes = Number(btn.dataset.dur) || 0;
@@ -2853,7 +3203,6 @@
             showToast(num > 0 ? `⏱️ 已隱藏低於 ${num} 分鐘的影片` : '⏱️ 已取消片長限制');
         });
 
-        // 廣告 / 自動翻頁 / 點選隱藏
         panel.querySelector('#sb-btn-ads').addEventListener('click', () => {
             cfg.blockAds = !cfg.blockAds;
             saveCfg();
@@ -2896,7 +3245,7 @@
         }, 2000);
 
         let timer = null;
-        const ignoredSel = '#sb-float-panel, #sb-picker-bar, #sb-feed-overlay, #sb-toast, .sb-tag-badges, .vjs-control-bar';
+        const ignoredSel = '#sb-float-panel, #sb-picker-bar, #sb-feed-overlay, #sb-toast, .vjs-control-bar';
         const obs = new MutationObserver((mutations) => {
             if (feedOpen) return;
             const relevant = mutations.some((m) => {
