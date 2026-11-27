@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SpankBang 全能增強：抖音模式 / 快轉預覽 / 橫豎屏篩選 / Gold·Exclusive·AI分類 / 時長過濾 / 去廣告
 // @namespace    https://spankbang.com/
-// @version      1.1.0
-// @description  為 SpankBang 打造抖音上下滑動連刷模式（支援快轉畫面預覽、橫屏/豎屏/全部切換）、徹底隱藏頁面與播放器廣告、獨立分類篩選 SpankBang Gold / Exclusive / AI 標籤影片與自訂最低時長過濾。
+// @version      1.1.1
+// @description  為 SpankBang 打造抖音上下滑動連刷模式（支援快轉畫面預覽、橫屏/豎屏/全部切換）、徹底隱藏頁面與播放器廣告、隱藏原站封面雜亂標籤並保留腳本分類標記（Gold / Exclusive / AI）與自訂最低時長過濾。
 // @match        *://spankbang.com/*
 // @match        *://*.spankbang.com/*
 // @grant        GM_addStyle
@@ -22,6 +22,7 @@
 
     const DEFAULT_CFG = {
         blockAds: true,
+        hideOrigCoverTags: true,
         orientation: 'all', // 'all' | 'landscape' | 'portrait'
         showNormal: true,
         showGold: true,
@@ -59,7 +60,7 @@
     let feedClockShowSeconds = false;
     let consecutiveAutoSkips = 0;
 
-    // cacheKey -> { playUrl, previewUrl, vttUrl, vttCues }
+    // cacheKey -> { playUrl, previewUrl, vttUrl, vttCues, vttLoaded }
     const streamCache = new Map();
     const hlsInstances = new Map();
 
@@ -152,9 +153,70 @@
             pointer-events: none !important;
         }
 
+        /* 隱藏 SpankBang 原站封面上的既有標籤（不影響腳本自帶的 .sb-tag-badges） */
+        html[data-sb-hide-orig-tags="true"] .video-item a.thumb .t,
+        html[data-sb-hide-orig-tags="true"] .video-item a.thumb .h,
+        html[data-sb-hide-orig-tags="true"] .video-item a.thumb .l,
+        html[data-sb-hide-orig-tags="true"] .video-item a.thumb .video-badge,
+        html[data-sb-hide-orig-tags="true"] .js-video-item a.thumb .t,
+        html[data-sb-hide-orig-tags="true"] .js-video-item a.thumb .h,
+        html[data-sb-hide-orig-tags="true"] .js-video-item a.thumb .l,
+        html[data-sb-hide-orig-tags="true"] .js-video-item a.thumb .video-badge,
+        html[data-sb-hide-orig-tags="true"] [data-testid="video-item"] [data-testid="video-duration"],
+        html[data-sb-hide-orig-tags="true"] [data-testid="video-item"] [data-testid*="badge"],
+        html[data-sb-hide-orig-tags="true"] .sb-orig-tag-hidden {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
         .sb-filtered-out,
         .sb-user-hidden {
             display: none !important;
+        }
+
+        /* 腳本自帶的封面分類徽章 */
+        .sb-tag-badges {
+            position: absolute !important;
+            top: 6px !important;
+            right: 6px !important;
+            z-index: 20 !important;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            justify-content: flex-end !important;
+            gap: 4px !important;
+            pointer-events: none !important;
+            max-width: calc(100% - 12px) !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+        .sb-tag-chip {
+            padding: 2px 6px;
+            border-radius: 5px;
+            font-size: 10.5px;
+            font-weight: 800;
+            line-height: 1.25;
+            letter-spacing: 0.02em;
+            color: #fff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        .sb-tag-chip.gold {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #111827;
+        }
+        .sb-tag-chip.exclusive {
+            background: linear-gradient(135deg, #ec4899, #8b5cf6);
+        }
+        .sb-tag-chip.ai {
+            background: linear-gradient(135deg, #06b6d4, #2563eb);
+        }
+        .sb-tag-chip.orient {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            color: #e2e8f0;
         }
 
         /* ==================== 右下角懸浮控制面板 ==================== */
@@ -844,7 +906,9 @@
     }
 
     function applyRootFlags() {
-        document.documentElement.dataset.sbAds = cfg.blockAds ? 'true' : 'false';
+        const root = document.documentElement;
+        root.dataset.sbAds = cfg.blockAds ? 'true' : 'false';
+        root.dataset.sbHideOrigTags = cfg.hideOrigCoverTags ? 'true' : 'false';
     }
 
     function showToast(msg, duration = 2200) {
@@ -1053,7 +1117,7 @@
         }
     }
 
-    // ==================== 3. 影片卡片解析與分類（Gold / Exclusive / AI / 橫豎屏 / 片長） ====================
+    // ==================== 3. 影片卡片解析、去原封面標籤與腳本分類徽章 ====================
     function extractVideoId(href) {
         if (!href) return '';
         try {
@@ -1112,6 +1176,63 @@
         return Array.from(found);
     }
 
+    function getThumbContainer(card) {
+        const img = card.querySelector('img');
+        if (!img) return null;
+
+        const explicit = card.querySelector('a.thumb, [data-testid="video-thumb"], .thumb');
+        if (explicit && explicit.contains(img)) return explicit;
+
+        let box = img.parentElement;
+        if (box && box.tagName === 'PICTURE') box = box.parentElement;
+
+        // 若外層容器是縮圖的定位盒（不含標題連結），往上一層以涵蓋覆蓋在封面上的兄弟浮層標籤
+        const parent = box?.parentElement;
+        if (
+            parent &&
+            parent !== card &&
+            !parent.querySelector('a.n, [data-testid="video-title"], .title')
+        ) {
+            const imgRect = img.getBoundingClientRect();
+            const pRect = parent.getBoundingClientRect();
+            if (imgRect.height > 0 && pRect.height <= imgRect.height + 28) {
+                box = parent;
+            }
+        }
+        return box;
+    }
+
+    function markOriginalCoverTags(card, thumbWrap) {
+        if (!thumbWrap) return;
+        const img = thumbWrap.querySelector('img');
+
+        thumbWrap.querySelectorAll('div, span, p, i, em, strong, button, svg, a').forEach((el) => {
+            if (el.classList.contains('sb-tag-badges') || el.closest('.sb-tag-badges')) return;
+            if (el.classList.contains('sb-orig-tag-hidden')) return;
+            if ((img && el.contains(img)) || el.querySelector('img, video, picture')) return;
+
+            // 保護指向影片的標題文字連結
+            if (el.tagName === 'A' && /\/video\//.test(el.getAttribute('href') || '')) {
+                const txt = (el.textContent || '').trim();
+                if (txt.length > 24) return;
+            }
+
+            const cls = typeof el.className === 'string' ? el.className : (el.className?.baseVal || '');
+            const testId = el.getAttribute('data-testid') || '';
+            const isKnownBadge =
+                /(?:^|[\s_-])(?:video-badge|badge|badges|duration|gold|exclusive|hd|4k|uhd|vr|ai|tag|label|pill|t|h|l)(?:$|[\s_-])/i.test(`${cls} ${testId}`);
+
+            let isAbsOverlay = false;
+            try {
+                isAbsOverlay = getComputedStyle(el).position === 'absolute';
+            } catch {}
+
+            if (isKnownBadge || isAbsOverlay) {
+                el.classList.add('sb-orig-tag-hidden');
+            }
+        });
+    }
+
     function detectSpecialTags(card, title) {
         let isGold = false;
         let isExclusive = false;
@@ -1138,6 +1259,8 @@
         }
 
         card.querySelectorAll('span, div, a, p, svg, img, i, em, strong').forEach((el) => {
+            if (el.closest('.sb-tag-badges')) return;
+
             const href = el.tagName === 'A' ? (el.getAttribute('href') || '') : '';
             if (href) {
                 if (/\/gold\b|[?&]gold=/i.test(href)) isGold = true;
@@ -1237,6 +1360,7 @@
         ].filter(Boolean);
 
         for (const el of titleCandidates) {
+            if (el.closest('.sb-tag-badges')) continue;
             const attrT = (el.getAttribute('title') || '').trim();
             if (attrT && attrT.length > 1) {
                 title = attrT;
@@ -1256,7 +1380,7 @@
         let durationText = '';
         let durationSec = -1;
         const durEl = card.querySelector('span.video-badge.l, .l, [data-testid="video-duration"], [class*="duration"]');
-        if (durEl) {
+        if (durEl && !durEl.closest('.sb-tag-badges')) {
             const t = (durEl.textContent || '').replace(/\s+/g, ' ').trim();
             const sec = parseDurationToSeconds(t);
             if (sec >= 0) {
@@ -1266,7 +1390,7 @@
         }
         if (durationSec < 0) {
             for (const el of card.querySelectorAll('span, div')) {
-                if (el.children.length > 0) continue;
+                if (el.children.length > 0 || el.closest('.sb-tag-badges')) continue;
                 const t = (el.textContent || '').trim();
                 if (t.length >= 2 && t.length <= 12) {
                     const sec = parseDurationToSeconds(t);
@@ -1326,6 +1450,44 @@
         return true;
     }
 
+    function renderCardBadges(card, thumbWrap, meta) {
+        if (!thumbWrap) return;
+
+        if (getComputedStyle(thumbWrap).position === 'static') {
+            thumbWrap.style.position = 'relative';
+        }
+
+        let box = thumbWrap.querySelector(':scope > .sb-tag-badges');
+        const chips = [];
+        if (meta.isGold) chips.push({ cls: 'gold', txt: '👑 Gold' });
+        if (meta.isExclusive) chips.push({ cls: 'exclusive', txt: '💎 Exclusive' });
+        if (meta.isAI) chips.push({ cls: 'ai', txt: '🤖 AI' });
+        if (meta.orientation === 'portrait') chips.push({ cls: 'orient', txt: '📱 豎屏' });
+        else if (meta.orientation === 'landscape' && meta.orientationVerified) chips.push({ cls: 'orient', txt: '📺 橫屏' });
+
+        if (chips.length === 0) {
+            if (box) box.remove();
+            return;
+        }
+
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'sb-tag-badges';
+            thumbWrap.appendChild(box);
+        }
+
+        const sig = chips.map((c) => c.txt).join('|');
+        if (box.dataset.sig === sig) return;
+        box.dataset.sig = sig;
+        box.innerHTML = '';
+        chips.forEach((c) => {
+            const sp = document.createElement('span');
+            sp.className = `sb-tag-chip ${c.cls}`;
+            sp.textContent = c.txt;
+            box.appendChild(sp);
+        });
+    }
+
     function processVideoCards() {
         const cards = findVideoCards(document);
         const counts = { total: 0, shown: 0, hidden: 0, normal: 0, gold: 0, exclusive: 0, ai: 0 };
@@ -1351,13 +1513,20 @@
             card.dataset.sbAi = meta.isAI ? '1' : '0';
             card.dataset.sbOrient = meta.orientation;
 
+            const thumbWrap = getThumbContainer(card);
+            markOriginalCoverTags(card, thumbWrap);
+
             const img = card.querySelector('img');
             if (img && !img.complete && img.dataset.sbOrientBound !== '1') {
                 img.dataset.sbOrientBound = '1';
                 img.addEventListener('load', () => {
                     const updated = parseCardMeta(card);
                     if (updated) {
-                        card.classList.toggle('sb-filtered-out', !matchesFilters(updated, true));
+                        const tw = getThumbContainer(card);
+                        markOriginalCoverTags(card, tw);
+                        const isVis = matchesFilters(updated, true);
+                        card.classList.toggle('sb-filtered-out', !isVis);
+                        if (isVis) renderCardBadges(card, tw, updated);
                         updatePanelCounts();
                     }
                 }, { once: true });
@@ -1377,8 +1546,12 @@
 
             const visible = matchesFilters(meta, true);
             card.classList.toggle('sb-filtered-out', !visible);
-            if (visible) counts.shown++;
-            else counts.hidden++;
+            if (visible) {
+                counts.shown++;
+                renderCardBadges(card, thumbWrap, meta);
+            } else {
+                counts.hidden++;
+            }
         });
 
         updatePanelCounts(counts);
@@ -1547,7 +1720,6 @@
             return streamCache.get(cacheKey);
         }
 
-        // 若目標為當前播放頁，直接取用頁內資料
         try {
             const curU = new URL(location.href);
             const itemU = new URL(item.url, location.origin);
@@ -1578,7 +1750,6 @@
             const html = await res.text();
             const vttUrl = extractVttUrlFromHtml(html, item.url);
 
-            // 1. 解析頁內 stream_data
             const pair = parseStreamDataFromHtml(html);
             if (pair.playUrl) {
                 const bundle = { playUrl: pair.playUrl, previewUrl: pair.previewUrl, vttUrl, vttCues: null, vttLoaded: false };
@@ -1586,7 +1757,6 @@
                 return bundle;
             }
 
-            // 2. 備援：呼叫 /api/videos/stream
             const keyMatch =
                 html.match(/data-streamkey\s*=\s*["']([^"']+)["']/i) ||
                 html.match(/stream_key\s*[:=]\s*["']([^"']+)["']/i);
@@ -1616,7 +1786,6 @@
                 } catch {}
             }
 
-            // 3. 備援：直接找 HTML 內的 <source> 或 mp4/m3u8
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const srcEl = doc.querySelector('#main_video_player source[src], video source[src], video[src]');
             const rawDomSrc = srcEl?.getAttribute('src') || '';
@@ -1937,7 +2106,6 @@
         const drawerEl = overlay.querySelector('#sb-feed-drawer');
         const drawerGrid = overlay.querySelector('#sb-drawer-grid');
 
-        // 快轉預覽 DOM 與狀態
         const previewBox = overlay.querySelector('#sb-feed-preview-box');
         const previewStage = overlay.querySelector('#sb-feed-preview-stage');
         const previewPoster = overlay.querySelector('#sb-feed-preview-poster');
@@ -2098,7 +2266,6 @@
 
             previewLabel.textContent = labelText || `${formatSec(targetSec)} / ${formatSec(duration)}`;
 
-            // 橫向定位：拖曳進度條時跟隨手指/滑鼠，橫滑手勢時置中顯示
             if (typeof anchorClientX === 'number' && Number.isFinite(anchorClientX)) {
                 const halfW = (previewBox.offsetWidth || 226) / 2;
                 const clampedX = Math.max(halfW + 10, Math.min(window.innerWidth - halfW - 10, anchorClientX));
@@ -2109,7 +2276,6 @@
                 previewBox.style.bottom = `calc(168px + env(safe-area-inset-bottom, 0px))`;
             }
 
-            // 1. 若有 VTT 縮圖雪碧圖，優先零延遲顯示
             if (bundle?.vttCues && bundle.vttCues.length > 0) {
                 previewBox.classList.add('show');
                 previewVideo.style.display = 'none';
@@ -2117,7 +2283,6 @@
                 return;
             }
 
-            // 2. 若有 MP4 預覽流，使用獨立低畫質預覽播放器顯示真實畫面
             if (bundle?.previewUrl) {
                 previewBox.classList.add('show');
                 previewSprite.style.display = 'none';
@@ -2137,7 +2302,6 @@
                 return;
             }
 
-            // 3. 純 HLS 備援：直接在主影片即時節流預覽畫面＋顯示時間膠囊
             if (allowMainFallback && curVideo) {
                 if (!usingMainLiveFallback) {
                     usingMainLiveFallback = true;
@@ -2463,7 +2627,6 @@
                     return;
                 }
 
-                // 背景嘗試載入 VTT 縮圖（若有）以供零延遲預覽
                 if (bundle.vttUrl && !bundle.vttLoaded) {
                     loadVttCuesIfPossible(bundle).catch(() => {});
                 }
@@ -2506,7 +2669,6 @@
         };
         feedGoToSlide = goToSlide;
 
-        // 底部進度條拖曳＋滑鼠懸停即時預覽
         const calcRangeThumbX = (ratio) => {
             const rect = rangeEl.getBoundingClientRect();
             return rect.left + Math.max(0, Math.min(1, ratio)) * rect.width;
@@ -2539,7 +2701,6 @@
             }
         });
 
-        // 電腦版滑鼠移到進度條上即可看到對應時間畫面預覽
         rangeEl.addEventListener('pointermove', (e) => {
             if (e.pointerType !== 'mouse' || scrubbing) return;
             const curVideo = getCurrentVideo();
@@ -2568,7 +2729,6 @@
         rangeEl.addEventListener('touchend', (e) => { e.stopPropagation(); commitScrub(); }, { passive: true });
         rangeEl.addEventListener('pointercancel', () => commitScrub());
 
-        // 控制列按鈕
         overlay.querySelectorAll('[data-fseek]').forEach((btn) => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -2639,7 +2799,6 @@
             }
         });
 
-        // 觸控滑動手勢（上下切集 / 左右快轉即時畫面預覽 / 單擊暫停 / 雙擊±10s）
         let tStartX = 0, tStartY = 0, gestureMode = null, scrubStartTime = 0, lastTapTs = 0;
 
         track.addEventListener('touchstart', (e) => {
@@ -3013,6 +3172,7 @@
         }
 
         panel.querySelector('#sb-btn-ads')?.classList.toggle('on', cfg.blockAds);
+        panel.querySelector('#sb-btn-origtags')?.classList.toggle('on', cfg.hideOrigCoverTags);
         panel.querySelector('#sb-btn-autoload')?.classList.toggle('on', cfg.autoLoadNext);
     }
 
@@ -3082,8 +3242,9 @@
                 </div>
 
                 <div class="sb-section">
-                    <div class="sb-seg-3">
+                    <div class="sb-grid-2">
                         <button type="button" id="sb-btn-ads" class="sb-btn">🛡️ 隱藏廣告</button>
+                        <button type="button" id="sb-btn-origtags" class="sb-btn">🧹 藏原封面標</button>
                         <button type="button" id="sb-btn-autoload" class="sb-btn">♾️ 抖音翻頁</button>
                         <button type="button" id="sb-btn-pick" class="sb-btn">🎯 點選隱藏</button>
                     </div>
@@ -3213,6 +3374,15 @@
             showToast(cfg.blockAds ? '🛡️ 已開啟廣告隱藏' : '已暫停廣告隱藏');
         });
 
+        panel.querySelector('#sb-btn-origtags').addEventListener('click', () => {
+            cfg.hideOrigCoverTags = !cfg.hideOrigCoverTags;
+            saveCfg();
+            applyRootFlags();
+            syncPanelUI();
+            processVideoCards();
+            showToast(cfg.hideOrigCoverTags ? '🧹 已隱藏原站封面標籤' : '已還原原站封面標籤');
+        });
+
         panel.querySelector('#sb-btn-autoload').addEventListener('click', () => {
             cfg.autoLoadNext = !cfg.autoLoadNext;
             saveCfg();
@@ -3245,7 +3415,7 @@
         }, 2000);
 
         let timer = null;
-        const ignoredSel = '#sb-float-panel, #sb-picker-bar, #sb-feed-overlay, #sb-toast, .vjs-control-bar';
+        const ignoredSel = '#sb-float-panel, #sb-picker-bar, #sb-feed-overlay, #sb-toast, .sb-tag-badges, .vjs-control-bar';
         const obs = new MutationObserver((mutations) => {
             if (feedOpen) return;
             const relevant = mutations.some((m) => {
