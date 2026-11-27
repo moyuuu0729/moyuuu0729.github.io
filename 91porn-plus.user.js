@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         91Porn 全能增強：去廣告 / 極簡列表 / 無限滾動 / 抖音模式 / 播放器強化
 // @namespace    https://91porn.com/
-// @version      1.6.3
+// @version      1.6.4
 // @description  徹底去除 91Porn 播放器與頁面廣告、封面零變形(內嵌添加時間)＋標題＋查看人數、滑到底部自動載入下一頁、抖音上下滑動連刷模式與播放器強化。
 // @match        *://*.91porn.com/*
 // @match        *://91porn.com/*
@@ -61,6 +61,8 @@
     let feedItems = [];
     let feedIndex = 0;
     let feedClockTimer = null;
+    let feedProgressTimer = null;
+    let feedGoToSlide = null;
     let feedClockShowSeconds = false;
     const streamCache = new Map();
     const hlsInstances = new Map();
@@ -477,11 +479,16 @@
         }
 
         /* ==================== 抖音模式全螢幕沉浸視窗 ==================== */
+        #p91-feed-overlay,
+        #p91-feed-overlay * {
+            box-sizing: border-box !important;
+        }
         #p91-feed-overlay {
             position: fixed;
             inset: 0;
             width: 100%;
             height: 100%;
+            height: 100dvh;
             z-index: 2147483644;
             background: #050608;
             color: #f3f4f6;
@@ -510,6 +517,7 @@
             width: 100%;
             height: 100%;
             min-height: 100%;
+            max-height: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -520,13 +528,17 @@
         }
         .p91-feed-poster {
             position: absolute;
-            inset: 0;
+            top: 52px;
+            bottom: 136px;
+            left: 0;
+            right: 0;
             width: 100%;
-            height: 100%;
+            height: auto;
             object-fit: contain;
             opacity: 0.45;
             pointer-events: none;
             z-index: 1;
+            transition: opacity 0.2s ease;
         }
         .p91-feed-video {
             position: relative;
@@ -1149,7 +1161,7 @@
     }
 
     function cleanAdsOnPage() {
-        if (!cfg.blockAds) return;
+        if (!cfg.blockAds || feedOpen || document.hidden) return;
 
         document.querySelectorAll('body > div, body > a, body > aside, body > section').forEach((el) => {
             if (el.id?.startsWith('p91-')) return;
@@ -1636,12 +1648,15 @@
     }
 
     function enhancePlayerPage() {
+        if (feedOpen) return;
+
         const vk = extractViewKey(location.href);
         if (vk) markVideoAsWatched(vk);
 
-        const playerWrap = document.querySelector('#player_one, .video-js') || document.querySelector('video')?.parentElement;
-        const video = playerWrap?.querySelector('video') || document.querySelector('video');
-        if (!playerWrap || !video) return;
+        const nonFeedVideo = Array.from(document.querySelectorAll('video')).find((v) => !v.closest('#p91-feed-overlay'));
+        const playerWrap = document.querySelector('#player_one, .video-js') || nonFeedVideo?.parentElement;
+        const video = playerWrap?.querySelector('video') || nonFeedVideo;
+        if (!playerWrap || !video || playerWrap.closest('#p91-feed-overlay')) return;
 
         if (getComputedStyle(playerWrap).position === 'static') {
             playerWrap.style.position = 'relative';
@@ -1960,8 +1975,8 @@
         return '';
     }
 
-    async function attachStreamToVideo(videoEl, streamUrl, slideIdx) {
-        if (!videoEl || !streamUrl) return;
+    async function attachStreamToVideo(videoEl, streamUrl, slideIdx, onReadyPlay) {
+        if (!videoEl || !streamUrl) return 'none';
         videoEl.controls = false;
         videoEl.removeAttribute('controls');
 
@@ -1975,13 +1990,29 @@
             const HlsLib = await ensureHlsLibrary();
             if (HlsLib && HlsLib.isSupported()) {
                 const hls = new HlsLib({ enableWorker: true });
+                hls.on(HlsLib.Events.MANIFEST_PARSED, () => {
+                    if (feedOpen && slideIdx === feedIndex && typeof onReadyPlay === 'function') {
+                        onReadyPlay(videoEl);
+                    }
+                });
+                hls.on(HlsLib.Events.ERROR, (_evt, data) => {
+                    if (data?.fatal && feedOpen && slideIdx === feedIndex) {
+                        const st = videoEl.closest('.p91-feed-slide')?.querySelector('.p91-feed-status');
+                        if (st) {
+                            st.textContent = '⚠️ 串流無法播放，請上滑看下一部';
+                            st.style.display = 'block';
+                        }
+                    }
+                });
                 hls.loadSource(streamUrl);
                 hls.attachMedia(videoEl);
                 hlsInstances.set(slideIdx, hls);
-                return;
+                return 'hls';
             }
         }
         videoEl.src = streamUrl;
+        videoEl.load();
+        return 'native';
     }
 
     function updateFeedClockText() {
@@ -2088,8 +2119,11 @@
         const drawerGrid = overlay.querySelector('#p91-drawer-grid');
 
         let scrubbing = false;
-        let activeProgressTimer = null;
         let hudHideTimer = null;
+
+        const getSlides = () => Array.from(track.querySelectorAll(':scope > .p91-feed-slide'));
+        const getSlide = (i) => getSlides()[i] || null;
+        const getCurrentVideo = () => getSlide(feedIndex)?.querySelector('video') || null;
 
         const showFeedHud = (text, durationMs = 650) => {
             hud.textContent = text;
@@ -2100,7 +2134,18 @@
             }
         };
 
-        const getCurrentVideo = () => track?.children?.[feedIndex]?.querySelector('video') || null;
+        const tryPlayVideo = (v) => {
+            if (!v || !feedOpen) return;
+            v.muted = Boolean(cfg.feedMuted);
+            v.playbackRate = Number(cfg.playbackRate) || 1.0;
+            v.play().catch(() => {
+                v.muted = true;
+                cfg.feedMuted = true;
+                const muteBtn = overlay.querySelector('#p91-fc-mute');
+                if (muteBtn) muteBtn.textContent = '🔇 靜音';
+                v.play().catch(() => {});
+            });
+        };
 
         const syncBottomDockToItem = (item) => {
             if (!item) return;
@@ -2116,12 +2161,12 @@
         };
 
         const bindProgressSync = (video) => {
-            if (activeProgressTimer) {
-                clearInterval(activeProgressTimer);
-                activeProgressTimer = null;
+            if (feedProgressTimer) {
+                clearInterval(feedProgressTimer);
+                feedProgressTimer = null;
             }
             if (!video) return;
-            activeProgressTimer = setInterval(() => {
+            feedProgressTimer = setInterval(() => {
                 if (!feedOpen || scrubbing) return;
                 if (Number.isFinite(video.duration) && video.duration > 0) {
                     rangeEl.value = String(Math.round((video.currentTime / video.duration) * 1000));
@@ -2225,6 +2270,7 @@
             `;
 
             const video = slide.querySelector('video');
+            const posterEl = slide.querySelector('.p91-feed-poster');
             const statusEl = slide.querySelector('.p91-feed-status');
 
             if (video) {
@@ -2241,6 +2287,7 @@
                     video.controls = false;
                     video.removeAttribute('controls');
                     if (statusEl) statusEl.style.display = 'none';
+                    if (posterEl) posterEl.style.opacity = '0';
                 });
                 video.addEventListener('waiting', () => {
                     if (idx === feedIndex && statusEl) {
@@ -2260,9 +2307,10 @@
         };
 
         const syncSlidesDOM = () => {
-            while (track.children.length < feedItems.length) {
-                const nextIdx = track.children.length;
-                track.appendChild(buildSlide(feedItems[nextIdx], nextIdx));
+            let count = getSlides().length;
+            while (count < feedItems.length) {
+                track.appendChild(buildSlide(feedItems[count], count));
+                count++;
             }
             counterEl.textContent = `${feedIndex + 1} / ${feedItems.length}`;
         };
@@ -2274,13 +2322,26 @@
             feedItems.forEach((item, idx) => {
                 const cell = document.createElement('div');
                 cell.className = `p91-drawer-item ${idx === feedIndex ? 'active' : ''}`;
-                cell.innerHTML = `
-                    <div class="p91-drawer-thumb">
-                        ${item.poster ? `<img src="${item.poster}" loading="lazy" alt="" />` : ''}
-                        <span class="p91-drawer-idx">#${idx + 1}</span>
-                    </div>
-                    <div class="p91-drawer-caption">${item.title}</div>
-                `;
+
+                const thumb = document.createElement('div');
+                thumb.className = 'p91-drawer-thumb';
+                if (item.poster) {
+                    const img = document.createElement('img');
+                    img.src = item.poster;
+                    img.loading = 'lazy';
+                    img.alt = '';
+                    thumb.appendChild(img);
+                }
+                const idxSpan = document.createElement('span');
+                idxSpan.className = 'p91-drawer-idx';
+                idxSpan.textContent = `#${idx + 1}`;
+                thumb.appendChild(idxSpan);
+
+                const caption = document.createElement('div');
+                caption.className = 'p91-drawer-caption';
+                caption.textContent = item.title || '';
+
+                cell.append(thumb, caption);
                 cell.addEventListener('click', () => {
                     drawerEl.classList.remove('open');
                     goToSlide(idx);
@@ -2299,22 +2360,28 @@
             if (item.vk) markVideoAsWatched(item.vk);
             enhanceVideoCards();
 
-            Array.from(track.children).forEach((sl, i) => {
+            getSlides().forEach((sl, i) => {
                 const v = sl.querySelector('video');
                 if (!v) return;
                 v.controls = false;
                 v.removeAttribute('controls');
                 if (i !== idx) {
                     try { v.pause(); } catch {}
-                    if (Math.abs(i - idx) > 2 && v.src) {
+                    if (Math.abs(i - idx) > 2 && (v.src || hlsInstances.has(i))) {
+                        if (hlsInstances.has(i)) {
+                            try { hlsInstances.get(i).destroy(); } catch {}
+                            hlsInstances.delete(i);
+                        }
                         v.removeAttribute('src');
                         v.load();
+                        const posterEl = sl.querySelector('.p91-feed-poster');
+                        if (posterEl) posterEl.style.opacity = '0.45';
                         delete sl.dataset.loaded;
                     }
                 }
             });
 
-            const activeSlide = track.children[idx];
+            const activeSlide = getSlide(idx);
             const video = activeSlide ? activeSlide.querySelector('video') : null;
             const statusEl = activeSlide ? activeSlide.querySelector('.p91-feed-status') : null;
 
@@ -2340,7 +2407,8 @@
                 const streamUrl = await resolveVideoStreamUrl(item);
                 if (!feedOpen || idx !== feedIndex) return;
 
-                const latestVideo = track.children[idx]?.querySelector('video');
+                const latestSlide = getSlide(idx);
+                const latestVideo = latestSlide?.querySelector('video');
                 if (!latestVideo) return;
 
                 if (!streamUrl) {
@@ -2350,27 +2418,17 @@
                     }
                     return;
                 }
-                activeSlide.dataset.loaded = '1';
+                latestSlide.dataset.loaded = '1';
                 latestVideo.muted = Boolean(cfg.feedMuted);
                 latestVideo.playbackRate = Number(cfg.playbackRate) || 1.0;
-                await attachStreamToVideo(latestVideo, streamUrl, idx);
+                const mode = await attachStreamToVideo(latestVideo, streamUrl, idx, tryPlayVideo);
                 if (!feedOpen || idx !== feedIndex) return;
 
-                latestVideo.play().catch(() => {
-                    latestVideo.muted = true;
-                    cfg.feedMuted = true;
-                    const muteBtn = overlay.querySelector('#p91-fc-mute');
-                    if (muteBtn) muteBtn.textContent = '🔇 靜音';
-                    latestVideo.play().catch(() => {});
-                });
+                if (mode !== 'hls') {
+                    tryPlayVideo(latestVideo);
+                }
             } else {
-                video.play().catch(() => {
-                    video.muted = true;
-                    cfg.feedMuted = true;
-                    const muteBtn = overlay.querySelector('#p91-fc-mute');
-                    if (muteBtn) muteBtn.textContent = '🔇 靜音';
-                    video.play().catch(() => {});
-                });
+                tryPlayVideo(video);
             }
 
             if (idx + 1 < feedItems.length) {
@@ -2400,6 +2458,7 @@
             syncBottomDockToItem(feedItems[feedIndex]);
             activateSlide(feedIndex);
         };
+        feedGoToSlide = goToSlide;
 
         let tStartX = 0;
         let tStartY = 0;
@@ -2472,7 +2531,7 @@
                 }
             } else if (Math.hypot(dx, dy) < 10 && !e.target.closest('button, input')) {
                 const now = Date.now();
-                const curSlide = track.children[feedIndex];
+                const curSlide = getSlide(feedIndex);
                 const curVideo = curSlide?.querySelector('video');
                 const iconEl = curSlide?.querySelector('.p91-feed-center-icon');
                 if (curVideo) {
@@ -2535,6 +2594,11 @@
     function closeFeedMode() {
         if (!feedOpen) return;
         stopFeedClock();
+        if (feedProgressTimer) {
+            clearInterval(feedProgressTimer);
+            feedProgressTimer = null;
+        }
+        feedGoToSlide = null;
         feedOpen = false;
         delete document.documentElement.dataset.p91FeedActive;
         document.documentElement.style.overflow = '';
@@ -2565,25 +2629,17 @@
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
 
         if (feedOpen) {
-            const track = document.getElementById('p91-feed-track');
-            const curVideo = track?.children?.[feedIndex]?.querySelector('video') || null;
+            const slides = document.querySelectorAll('#p91-feed-track > .p91-feed-slide');
+            const curVideo = slides[feedIndex]?.querySelector('video') || null;
             if (e.key === 'Escape') {
                 e.preventDefault();
                 closeFeedMode();
             } else if (e.key === 'ArrowDown' && feedIndex < feedItems.length - 1) {
                 e.preventDefault();
-                feedIndex++;
-                if (track) track.style.transform = `translate3d(0, -${feedIndex * 100}%, 0)`;
-                const counter = document.getElementById('p91-feed-counter');
-                if (counter) counter.textContent = `${feedIndex + 1} / ${feedItems.length}`;
-                track?.children?.[feedIndex]?.querySelector('video')?.play().catch(() => {});
+                if (feedGoToSlide) feedGoToSlide(feedIndex + 1);
             } else if (e.key === 'ArrowUp' && feedIndex > 0) {
                 e.preventDefault();
-                feedIndex--;
-                if (track) track.style.transform = `translate3d(0, -${feedIndex * 100}%, 0)`;
-                const counter = document.getElementById('p91-feed-counter');
-                if (counter) counter.textContent = `${feedIndex + 1} / ${feedItems.length}`;
-                track?.children?.[feedIndex]?.querySelector('video')?.play().catch(() => {});
+                if (feedGoToSlide) feedGoToSlide(feedIndex - 1);
             } else if (e.key === 'ArrowLeft' && curVideo) {
                 e.preventDefault();
                 curVideo.currentTime = Math.max(0, curVideo.currentTime - 5);
