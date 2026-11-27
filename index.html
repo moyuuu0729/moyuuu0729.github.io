@@ -644,7 +644,7 @@
             <div class="switcher-bar">
                 <button id="btn-prev" class="nav-arrow" type="button" aria-label="上一個腳本">‹</button>
                 <div id="switcher-pills" class="switcher-pills"></div>
-                <span id="switcher-counter" class="switcher-counter">1 / 4</span>
+                <span id="switcher-counter" class="switcher-counter">1 / 5</span>
                 <button id="btn-next" class="nav-arrow" type="button" aria-label="下一個腳本">›</button>
             </div>
 
@@ -746,21 +746,21 @@
                 title: 'ASMRgay 自訂強化播放器',
                 shortTitle: 'ASMRgay 播放器',
                 tag: '手機 / 電腦通用',
-                fallbackVersion: '2.0.0',
+                fallbackVersion: '2.1.0',
                 theme: DEFAULT_THEMES[1], // 電光青藍外框
                 sites: [
                     { name: 'asmrgay.com', url: 'https://www.asmrgay.com/' },
                 ],
-                summary: '為 asmrgay.com 打造手機與電腦皆適用的自訂音訊播放器，支援一鍵遞迴掃描子資料夾音檔、進退 5 秒、完整多行標題大列表、倍速與睡眠定時。',
+                summary: '為 asmrgay.com 打造手機與電腦皆適用的自訂音訊播放器，支援子資料夾斷點續掃與獨立儲存、搜尋相關度排序連播、進退 5 秒、完整多行標題大列表、倍速與睡眠定時。',
                 features: [
-                    '📂 一鍵遞迴掃描子資料夾所有音檔（AList / 爬蟲雙引擎）',
+                    '📂 子資料夾遞迴斷點續掃＋獨立儲存子資料夾曲目庫',
+                    '🔍 搜尋結果依相關度自動排序並照搜尋順序連續播放',
                     '⏪ 快捷進退 5 秒（支援鍵盤 ← → 與空白鍵）',
-                    '📋 完整多行大標題列表抽屜＋即時搜尋篩選',
+                    '📋 完整多行大標題列表抽屜（本頁／子資料夾庫分頁切換）',
                     '🎚️ 多段倍速切換（0.75x～2x）與列表／單曲循環',
                     '🌙 睡眠定時自動暫停（15 / 30 / 60 分鐘）',
                     '🎧 支援手機鎖屏與藍牙耳機媒體控制',
                     '🙈 一鍵隱藏原版播放器＋可收合懸浮膠囊',
-                    '🎯 支援手動點擊定位並綁定任意播放清單',
                 ],
             },
             {
@@ -790,7 +790,7 @@
                 title: '91Porn 全能增強腳本',
                 shortTitle: '91Porn 全能增強',
                 tag: '手機 / 電腦通用',
-                fallbackVersion: '1.4.0',
+                fallbackVersion: '1.6.5',
                 theme: DEFAULT_THEMES[3], // 紫羅蘭外框
                 sites: [
                     { name: '91porn.com', url: 'https://91porn.com/' },
@@ -805,6 +805,28 @@
                     '✓ 自動標記已看過影片（支援僅標記／淡化／隱藏）',
                     '⚡ 播放器快捷列（±5s/±10s、0.75x～2x 倍速、畫中畫與斷點續播）',
                     '🎯 可拖曳點選隱藏元件＋標題／作者關鍵字過濾',
+                ],
+            },
+            {
+                file: 'spankbang.user.js',
+                title: 'SpankBang 全能增強腳本',
+                shortTitle: 'SpankBang 增強',
+                tag: '手機 / 電腦通用',
+                fallbackVersion: '1.0.0',
+                theme: DEFAULT_THEMES[4], // 琥珀橘金外框
+                sites: [
+                    { name: 'spankbang.com', url: 'https://spankbang.com/' },
+                ],
+                summary: '為 SpankBang 打造抖音上下滑動連刷模式（支援橫屏／豎屏／全部切換）、徹底隱藏頁面與播放器廣告、獨立分類篩選 SpankBang Gold／Exclusive／AI 標籤與自訂最低片長過濾。',
+                features: [
+                    '🎬 抖音上下滑動連刷模式＋選集抽屜、手勢快轉與自動翻頁',
+                    '📐 橫屏／豎屏／全部一起自由切換（列表＋抖音實時解析度判別）',
+                    '🏷️ 獨立分類 Gold／Exclusive／AI 標籤（自由勾選顯示或全部隱藏）',
+                    '⏱️ 最低片長過濾（3～30 分鐘快捷按鈕＋自訂分鐘數）',
+                    '🛡️ 徹底隱藏頁面橫幅、側欄、直播推廣與播放器彈窗廣告',
+                    '⚡ 支援倍速（0.75x～2x）、靜音記憶、雙擊快進退與全螢幕',
+                    '🎯 內建可拖曳「點選隱藏元件」工具，一鍵永久清除指定區塊',
+                    '📊 面板即時統計各標籤數量與已過濾影片數，支援拖曳與收合',
                 ],
             },
         ];
