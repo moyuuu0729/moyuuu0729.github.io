@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X (Twitter) 全能增強：抖音模式 / 快轉預覽 / 橫豎屏篩選 / 時長過濾 / 去廣告
 // @namespace    https://x.com/
-// @version      1.1.0
-// @description  為 X (Twitter) 打造抖音上下滑動連刷模式，支援主頁直連 API 攔截＋Redux 記憶體掃描、快轉即時畫面預覽、橫屏/豎屏/全部切換、最低片長與 GIF 過濾、自動翻頁續刷與隱藏推廣廣告。
+// @version      1.2.0
+// @description  為 X (Twitter) 打造抖音上下滑動連刷模式，支援主頁直連 API 攔截＋Redux 記憶體掃描、快轉即時畫面預覽、精準橫屏/豎屏/全部切換、最低片長與 GIF 過濾、自動翻頁續刷與隱藏推廣廣告。
 // @match        *://x.com/*
 // @match        *://*.x.com/*
 // @match        *://twitter.com/*
@@ -59,8 +59,10 @@
     let feedGoToSlide = null;
     let feedCleanupPreview = null;
     let feedOnNewMedia = null;
+    let feedResizeCleanup = null;
     let feedClockShowSeconds = false;
     let lastBgScrollTs = 0;
+    let consecutiveAutoSkips = 0;
 
     function loadCfg() {
         try {
@@ -124,13 +126,13 @@
 
         #xp-float-panel,
         #xp-float-panel * {
-            box-sizing: border-box;
+            box-sizing: border-box !important;
         }
         #xp-float-panel {
-            position: fixed;
+            position: fixed !important;
             right: 12px;
             bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-            z-index: 2147483640;
+            z-index: 2147483640 !important;
             width: min(332px, calc(100vw - 24px));
             border-radius: 16px;
             background: rgba(15, 20, 28, 0.96);
@@ -145,11 +147,11 @@
             user-select: none;
         }
         #xp-float-panel.collapsed {
-            width: auto;
+            width: auto !important;
             border-radius: 999px;
         }
         #xp-float-panel.collapsed .xp-panel-body {
-            display: none;
+            display: none !important;
         }
         .xp-panel-head {
             display: flex;
@@ -246,72 +248,74 @@
             box-sizing: border-box !important;
         }
         #xp-feed-overlay {
-            position: fixed;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            height: 100dvh;
-            z-index: 2147483644;
-            background: #040609;
-            color: #f3f4f6;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
-            overflow: hidden;
-            overscroll-behavior: contain;
-            user-select: none;
-            -webkit-user-select: none;
-            touch-action: none;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: var(--xp-slide-h, 100dvh) !important;
+            z-index: 2147483644 !important;
+            background: #040609 !important;
+            color: #f3f4f6 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif !important;
+            overflow: hidden !important;
+            overscroll-behavior: contain !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
         }
         .xp-feed-track {
-            position: relative;
-            z-index: 2;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
+            position: relative !important;
+            z-index: 2 !important;
+            display: block !important;
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
             will-change: transform;
+            touch-action: none !important;
             transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
         }
         .xp-feed-track.dragging {
-            transition: none;
+            transition: none !important;
         }
         .xp-feed-slide {
-            position: relative;
-            flex: 0 0 100%;
-            width: 100%;
-            height: 100%;
-            min-height: 100%;
-            max-height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #040609;
-            overflow: hidden;
-            padding-top: 52px;
-            padding-bottom: 152px;
+            position: relative !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+            height: var(--xp-slide-h, 100dvh) !important;
+            min-height: var(--xp-slide-h, 100dvh) !important;
+            max-height: var(--xp-slide-h, 100dvh) !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #040609 !important;
+            overflow: hidden !important;
+            flex: none !important;
         }
         .xp-feed-poster {
-            position: absolute;
-            top: 52px;
-            bottom: 152px;
-            left: 0;
-            right: 0;
-            width: 100%;
-            height: auto;
-            object-fit: contain;
+            position: absolute !important;
+            inset: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain !important;
             opacity: 0.45;
-            pointer-events: none;
-            z-index: 1;
+            pointer-events: none !important;
+            z-index: 1 !important;
             transition: opacity 0.2s ease;
         }
         .xp-feed-video {
-            position: relative;
-            z-index: 2;
-            width: 100%;
-            height: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            background: transparent;
-            pointer-events: none;
+            position: relative !important;
+            z-index: 2 !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+            object-fit: contain !important;
+            background: transparent !important;
+            pointer-events: none !important;
+            display: block !important;
         }
         .xp-feed-video::-webkit-media-controls,
         .xp-feed-video::-webkit-media-controls-enclosure,
@@ -321,11 +325,11 @@
             pointer-events: none !important;
         }
         .xp-feed-status {
-            position: absolute;
-            top: 42%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 6;
+            position: absolute !important;
+            top: 44% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            z-index: 6 !important;
             padding: 8px 16px;
             border-radius: 999px;
             background: rgba(12, 18, 28, 0.9);
@@ -338,11 +342,11 @@
             max-width: 86vw;
         }
         .xp-feed-center-icon {
-            position: absolute;
-            top: 42%;
-            left: 50%;
+            position: absolute !important;
+            top: 44% !important;
+            left: 50% !important;
             transform: translate(-50%, -50%) scale(0.8);
-            z-index: 8;
+            z-index: 8 !important;
             width: 60px;
             height: 60px;
             border-radius: 50%;
@@ -363,14 +367,14 @@
         }
 
         #xp-feed-topbar {
-            position: fixed;
-            top: calc(10px + env(safe-area-inset-top, 0px));
-            left: 12px;
-            right: 12px;
-            z-index: 30;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            position: fixed !important;
+            top: calc(10px + env(safe-area-inset-top, 0px)) !important;
+            left: 12px !important;
+            right: 12px !important;
+            z-index: 30 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
             gap: 6px;
             pointer-events: none;
         }
@@ -383,8 +387,8 @@
         .xp-fbtn {
             padding: 6px 10px;
             border-radius: 999px;
-            background: rgba(12, 18, 28, 0.82);
-            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(12, 18, 28, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             color: #f3f4f6;
             font-size: 12px;
             font-weight: 700;
@@ -399,20 +403,20 @@
             transform: scale(0.95);
         }
         .xp-fbtn.highlight {
-            border-color: rgba(56, 189, 248, 0.85);
+            border-color: rgba(56, 189, 248, 0.9);
             color: #bae6fd;
         }
 
         #xp-feed-bottom-dock {
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 28;
+            position: fixed !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            z-index: 28 !important;
             padding: 18px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-            background: linear-gradient(to top, rgba(4, 6, 9, 0.97) 0%, rgba(4, 6, 9, 0.86) 75%, transparent 100%);
-            display: flex;
-            flex-direction: column;
+            background: linear-gradient(to top, rgba(4, 6, 9, 0.94) 0%, rgba(4, 6, 9, 0.72) 72%, transparent 100%);
+            display: flex !important;
+            flex-direction: column !important;
             gap: 6px;
             pointer-events: auto;
         }
@@ -430,24 +434,27 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
         }
         #xp-feed-meta {
             flex-shrink: 0;
             font-size: 11px;
             font-weight: 700;
-            color: #cbd5e1;
+            color: #e2e8f0;
             font-variant-numeric: tabular-nums;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
         }
         #xp-feed-text {
             font-size: 13px;
             line-height: 1.4;
-            color: #f1f5f9;
+            color: #f8fafc;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
             word-break: break-word;
             cursor: pointer;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
         }
         #xp-feed-text.expanded {
             -webkit-line-clamp: unset;
@@ -497,8 +504,8 @@
         .xp-fcbtn {
             padding: 5px 9px;
             border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(15, 20, 28, 0.72);
             color: #f3f4f6;
             font-size: 11.5px;
             font-weight: 700;
@@ -518,11 +525,11 @@
 
         /* 快轉即時預覽浮窗 */
         #xp-feed-preview-box {
-            position: fixed;
+            position: fixed !important;
             left: 50%;
             bottom: calc(158px + env(safe-area-inset-bottom, 0px));
             transform: translateX(-50%);
-            z-index: 36;
+            z-index: 36 !important;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -601,11 +608,11 @@
         }
 
         #xp-feed-hud {
-            position: fixed;
-            top: 44%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 35;
+            position: fixed !important;
+            top: 44% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            z-index: 35 !important;
             padding: 10px 18px;
             border-radius: 999px;
             background: rgba(12, 18, 28, 0.92);
@@ -622,63 +629,87 @@
             opacity: 1;
         }
 
+        /* 選集抽屜（獨立觸控捲動，不被外層鎖死或擠壓變形） */
         #xp-feed-drawer {
-            position: fixed;
-            inset: 0;
-            z-index: 40;
-            background: rgba(4, 6, 9, 0.92);
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            height: var(--xp-slide-h, 100dvh) !important;
+            z-index: 45 !important;
+            background: rgba(4, 6, 9, 0.94) !important;
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
-            display: none;
-            flex-direction: column;
-            pointer-events: auto;
+            display: none !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+            pointer-events: auto !important;
+            touch-action: auto !important;
         }
         #xp-feed-drawer.open {
-            display: flex;
+            display: flex !important;
         }
         .xp-drawer-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            flex: 0 0 auto !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 8px;
             padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.12);
             font-size: 14px;
             font-weight: 800;
         }
+        .xp-drawer-scroll {
+            flex: 1 1 0% !important;
+            min-height: 0 !important;
+            width: 100% !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain !important;
+            touch-action: pan-y !important;
+            padding: 10px 10px calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+        }
         .xp-drawer-grid {
-            flex: 1;
-            overflow-y: auto;
-            padding: 10px;
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 8px;
-            align-content: start;
-            touch-action: pan-y;
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            grid-auto-rows: max-content !important;
+            align-content: start !important;
+            gap: 8px !important;
+            width: 100% !important;
         }
         .xp-drawer-item {
-            position: relative;
-            border-radius: 8px;
-            overflow: hidden;
-            background: #111827;
+            position: relative !important;
+            border-radius: 8px !important;
+            overflow: hidden !important;
+            background: #111827 !important;
             border: 2px solid transparent;
             cursor: pointer;
-            display: flex;
-            flex-direction: column;
+            display: flex !important;
+            flex-direction: column !important;
+            flex: none !important;
         }
         .xp-drawer-item.active {
-            border-color: #1d9bf0;
+            border-color: #1d9bf0 !important;
         }
         .xp-drawer-thumb {
-            position: relative;
-            width: 100%;
+            position: relative !important;
+            width: 100% !important;
             aspect-ratio: 16 / 9;
-            background: #070a10;
+            background: #070a10 !important;
+            overflow: hidden !important;
+            flex: none !important;
+        }
+        .xp-drawer-grid.portrait-mode .xp-drawer-thumb {
+            aspect-ratio: 9 / 14;
         }
         .xp-drawer-thumb img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            display: block !important;
         }
         .xp-drawer-idx {
             position: absolute;
@@ -690,6 +721,17 @@
             color: #fff;
             font-size: 10px;
             font-weight: 800;
+        }
+        .xp-drawer-orient {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            padding: 1px 5px;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #bae6fd;
+            font-size: 9.5px;
+            font-weight: 700;
         }
         .xp-drawer-dur {
             position: absolute;
@@ -712,13 +754,18 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
+        .xp-drawer-more-wrap {
+            margin-top: 12px;
+            display: flex;
+            justify-content: center;
+        }
 
         #xp-toast {
-            position: fixed;
+            position: fixed !important;
             left: 50%;
             bottom: calc(28px + env(safe-area-inset-bottom, 0px));
             transform: translateX(-50%);
-            z-index: 2147483647;
+            z-index: 2147483647 !important;
             padding: 8px 16px;
             border-radius: 999px;
             background: rgba(12, 18, 28, 0.95);
@@ -781,6 +828,23 @@
         return `≥${Math.floor(sec / 60)}分${sec % 60}秒`;
     }
 
+    function parseDimensionsFromUrl(url) {
+        const m = String(url || '').match(/\/(\d{2,4})x(\d{2,4})\//);
+        if (m) {
+            const w = Number(m[1]) || 0;
+            const h = Number(m[2]) || 0;
+            if (w > 0 && h > 0) return { w, h };
+        }
+        return { w: 0, h: 0 };
+    }
+
+    function classifyOrientation(w, h) {
+        if (w > 0 && h > 0) {
+            return h > w * 1.03 ? 'portrait' : 'landscape';
+        }
+        return 'unknown';
+    }
+
     // ==================== 2. 四重影片擷取引擎（API + Redux + Fiber + DOM） ====================
     function isCandidateApiUrl(rawUrl) {
         const u = String(rawUrl || '');
@@ -802,15 +866,19 @@
 
         const bucket = getCurrentRouteBucket();
         const prev = allMediaMap.get(item.id);
-        // 若已有相同影片但先前缺少作者/推文資訊，則補齊更新
         if (prev) {
             if (!prev.text && item.text) prev.text = item.text;
-            if ((!prev.screenName) && item.screenName) {
+            if (!prev.screenName && item.screenName) {
                 prev.screenName = item.screenName;
                 prev.authorName = item.authorName || prev.authorName;
                 prev.authorUrl = item.authorUrl || prev.authorUrl;
             }
             if (!prev.poster && item.poster) prev.poster = item.poster;
+            if (prev.orientation === 'unknown' && item.orientation !== 'unknown') {
+                prev.width = item.width;
+                prev.height = item.height;
+                prev.orientation = item.orientation;
+            }
             if (!bucket.has(item.id)) {
                 bucket.set(item.id, prev);
                 updatePanelCounts();
@@ -847,15 +915,22 @@
         const durationMs = Number(m.video_info?.duration_millis || 0);
         const durationSec = durationMs > 0 ? Math.round(durationMs / 1000) : (isGif ? 0 : -1);
 
-        let width = Number(m.original_info?.width || m.sizes?.large?.w || m.sizes?.medium?.w || 0);
-        let height = Number(m.original_info?.height || m.sizes?.large?.h || m.sizes?.medium?.h || 0);
-        if ((!width || !height) && Array.isArray(m.video_info?.aspect_ratio) && m.video_info.aspect_ratio.length === 2) {
+        // 優先採用真實影片串流 URL 尺寸與 video_info.aspect_ratio，避免被 16:9 縮圖誤判
+        let width = 0;
+        let height = 0;
+        const fromUrl = parseDimensionsFromUrl(mp4s[0]?.url || previewUrl || playUrl);
+        if (fromUrl.w > 0 && fromUrl.h > 0) {
+            width = fromUrl.w;
+            height = fromUrl.h;
+        } else if (Array.isArray(m.video_info?.aspect_ratio) && m.video_info.aspect_ratio.length === 2) {
             width = Number(m.video_info.aspect_ratio[0]) || 0;
             height = Number(m.video_info.aspect_ratio[1]) || 0;
         }
-        const orientation = (width > 0 && height > 0)
-            ? (height > width * 1.03 ? 'portrait' : 'landscape')
-            : 'unknown';
+        if (!width || !height) {
+            width = Number(m.original_info?.width || m.sizes?.large?.w || m.sizes?.medium?.w || 0);
+            height = Number(m.original_info?.height || m.sizes?.large?.h || m.sizes?.medium?.h || 0);
+        }
+        const orientation = classifyOrientation(width, height);
 
         const tweetId = String(ctx.tweetId || '');
         const screenName = String(ctx.screenName || '');
@@ -881,7 +956,8 @@
             durationText: isGif ? 'GIF' : (durationSec > 0 ? formatSec(durationSec) : ''),
             width,
             height,
-            orientation
+            orientation,
+            orientationVerified: fromUrl.w > 0 && fromUrl.h > 0
         });
     }
 
@@ -908,12 +984,10 @@
                 return;
             }
 
-            // 排除推廣廣告節點
             if (cfg.blockAds && (node.promotedMetadata || node.adMetadata || node.__typename === 'TimelinePromotedTweet')) {
                 return;
             }
 
-            // 處理 globalObjects（v2 REST 與部分書籤/通知結構）
             if (node.globalObjects?.tweets && typeof node.globalObjects.tweets === 'object') {
                 const users = node.globalObjects.users || {};
                 Object.values(node.globalObjects.tweets).forEach((t) => {
@@ -930,7 +1004,6 @@
                 });
             }
 
-            // 累積目前分支上的推文／作者資訊
             let nextCtx = ctx;
             const tweetObj = node.__typename === 'TweetWithVisibilityResults' && node.tweet ? node.tweet : node;
             if (tweetObj && tweetObj.legacy && typeof tweetObj.legacy === 'object') {
@@ -952,12 +1025,10 @@
                 };
             }
 
-            // 只要節點本身帶有 video_info.variants 就直接收錄（不再限死欄位路徑）
             if (node.video_info && Array.isArray(node.video_info.variants)) {
                 ingestSingleMedia(node, nextCtx, 0);
             }
 
-            // 解析卡片內的 unified_card JSON 字串
             if (node.key === 'unified_card' && typeof node.value?.string_value === 'string') {
                 try {
                     walk(JSON.parse(node.value.string_value), depth + 1, nextCtx);
@@ -989,7 +1060,6 @@
         } catch {}
     }
 
-    // 管道 1：主頁面 fetch + Response.prototype + XMLHttpRequest 全攔截
     function installApiHooks() {
         if (!window.__xpRespHooked && window.Response?.prototype) {
             const origJson = Response.prototype.json;
@@ -1062,7 +1132,6 @@
         }
     }
 
-    // 管道 2：從 #react-root 尋找並讀取 X 的 Redux Store（無需重整即可拿到已載入推文）
     function findReduxStore() {
         if (cachedReduxStore && typeof cachedReduxStore.getState === 'function') {
             return cachedReduxStore;
@@ -1141,14 +1210,12 @@
         return allMediaMap.size - before;
     }
 
-    // 管道 3 & 4：深度掃描推文 / 播放器 React Fiber 與 DOM <video>
     function scanDomAndFiber() {
         const before = allMediaMap.size;
         try {
             document.querySelectorAll('article[data-testid="tweet"], div[data-testid="videoPlayer"], video').forEach((el) => {
                 if (el.closest('#xp-feed-overlay, #xp-float-panel')) return;
 
-                // 若 DOM <video> 本身是直連 MP4（如 GIF 或無 MSE 影片），直接補抓
                 if (el.tagName === 'VIDEO') {
                     const src = el.currentSrc || el.src || el.querySelector('source')?.src || '';
                     if (src && /^https?:\/\//i.test(src) && !src.startsWith('blob:')) {
@@ -1157,8 +1224,9 @@
                         const tweetId = (timeLink.match(/\/status\/(\d+)/) || [])[1] || '';
                         const screenName = (timeLink.match(/x\.com\/([^/]+)\/status\//) || [])[1] || '';
                         const text = article?.querySelector('[data-testid="tweetText"]')?.textContent || '';
-                        const vw = el.videoWidth || 0;
-                        const vh = el.videoHeight || 0;
+                        const urlDims = parseDimensionsFromUrl(src);
+                        const vw = el.videoWidth || urlDims.w || 0;
+                        const vh = el.videoHeight || urlDims.h || 0;
                         registerMediaItem({
                             id: `dom_${src.split('?')[0].slice(-36)}`,
                             tweetId,
@@ -1175,7 +1243,8 @@
                             durationText: Number.isFinite(el.duration) && el.duration > 0 ? formatSec(el.duration) : '',
                             width: vw,
                             height: vh,
-                            orientation: (vw > 0 && vh > 0) ? (vh > vw * 1.03 ? 'portrait' : 'landscape') : 'unknown'
+                            orientation: classifyOrientation(vw, vh),
+                            orientationVerified: vw > 0 && vh > 0
                         });
                     }
                 }
@@ -1220,7 +1289,6 @@
         document.querySelectorAll('article[data-testid="tweet"]').forEach((article) => {
             const cell = article.closest('div[data-testid="cellInnerDiv"]') || article;
             if (cell.classList.contains('xp-ad-hidden')) return;
-
             if (article.querySelector('time')) return;
 
             let isAd = Boolean(article.querySelector('a[href*="/i/ads"], a[href*="business.x.com"]'));
@@ -1241,7 +1309,7 @@
         });
     }
 
-    function matchesFilters(item) {
+    function matchesFilters(item, strictOrient = true) {
         if (!item || !item.playUrl) return false;
         if (item.isGif && !cfg.showGif) return false;
 
@@ -1250,23 +1318,29 @@
             if (item.durationSec >= 0 && item.durationSec < cfg.minSeconds) return false;
         }
 
-        if (cfg.orientation !== 'all' && item.orientation !== 'unknown') {
+        if (cfg.orientation !== 'all') {
+            if (item.orientation === 'unknown') {
+                return !strictOrient;
+            }
             if (item.orientation !== cfg.orientation) return false;
         }
 
         return true;
     }
 
-    function getFilteredPool() {
-        return getPoolItems().filter(matchesFilters);
+    function getFilteredPool(strictOrient = true) {
+        return getPoolItems().filter((it) => matchesFilters(it, strictOrient));
     }
 
     function updatePanelCounts() {
         const panel = document.getElementById('xp-float-panel');
         if (!panel) return;
+        const pool = getPoolItems();
         const pageCount = getCurrentRouteBucket().size;
         const allCount = allMediaMap.size;
-        const matched = getFilteredPool().length;
+        const matched = getFilteredPool(true).length;
+        const portCount = pool.filter((it) => it.orientation === 'portrait').length;
+        const landCount = pool.filter((it) => it.orientation === 'landscape').length;
 
         const feedBtn = panel.querySelector('#xp-btn-feed');
         if (feedBtn) feedBtn.textContent = `🎬 進入抖音模式 (${matched})`;
@@ -1274,13 +1348,19 @@
         const miniBtn = panel.querySelector('#xp-btn-feed-mini');
         if (miniBtn) miniBtn.textContent = `🎬 ${matched}`;
 
+        const landBtn = panel.querySelector('[data-orient="landscape"]');
+        if (landBtn) landBtn.textContent = `📺 橫屏 (${landCount})`;
+
+        const portBtn = panel.querySelector('[data-orient="portrait"]');
+        if (portBtn) portBtn.textContent = `📱 豎屏 (${portCount})`;
+
         const statsEl = panel.querySelector('#xp-stats-line');
         if (statsEl) {
-            statsEl.textContent = `符合條件 ${matched} 部 · 本頁已收 ${pageCount} / 全部 ${allCount}`;
+            statsEl.textContent = `符合 ${matched} 部 · 本頁 ${pageCount} / 累積 ${allCount}`;
         }
     }
 
-    // ==================== 4. 抖音模式（含快轉預覽與背景自動續載） ====================
+    // ==================== 4. 抖音模式（固定像素高度防變形 + 獨立抽屜捲動 + 快轉預覽） ====================
     function updateFeedClockText() {
         const el = document.getElementById('xp-feed-clock');
         if (!el) return;
@@ -1310,15 +1390,15 @@
         }
     }
 
-    function triggerBackgroundScrollLoad() {
-        if (!cfg.autoScrollLoad) return;
+    function triggerBackgroundScrollLoad(forceNow = false) {
+        if (!cfg.autoScrollLoad && !forceNow) return;
         const now = Date.now();
-        if (now - lastBgScrollTs < 1500) return;
+        if (!forceNow && now - lastBgScrollTs < 1800) return;
         lastBgScrollTs = now;
         try {
-            window.scrollBy({ top: Math.max(900, window.innerHeight * 1.5), behavior: 'instant' });
+            window.scrollBy({ top: Math.max(900, window.innerHeight * 1.4), behavior: 'instant' });
         } catch {
-            window.scrollBy(0, Math.max(900, window.innerHeight * 1.5));
+            window.scrollBy(0, Math.max(900, window.innerHeight * 1.4));
         }
         setTimeout(() => {
             if (feedOpen) scanAllPageSources();
@@ -1329,9 +1409,18 @@
         if (feedOpen) return;
         scanAllPageSources();
 
-        const initialList = getFilteredPool();
+        let initialList = getFilteredPool(true);
+        if (initialList.length === 0 && cfg.orientation !== 'all') {
+            const unknownOnly = getPoolItems().filter((it) => it.orientation === 'unknown' && matchesFilters(it, false));
+            if (unknownOnly.length > 0) {
+                initialList = unknownOnly;
+            }
+        }
         if (initialList.length === 0) {
-            showToast('⚠️ 目前尚未掃到符合條件的影片，請先往下滑過影片貼文或放寬篩選條件', 3200);
+            const tip = cfg.orientation !== 'all'
+                ? `⚠️ 目前尚未收到符合「${orientLabel(cfg.orientation)}」的影片，請先切回「全部」或往下滑過更多影片`
+                : '⚠️ 目前尚未掃到符合條件的影片，請先往下滑過影片貼文或放寬篩選條件';
+            showToast(tip, 3200);
             return;
         }
 
@@ -1343,6 +1432,7 @@
         feedItems = initialList.slice();
         feedIdSet = new Set(feedItems.map((it) => it.id));
         feedIndex = Math.max(0, Math.min(startIdx, feedItems.length - 1));
+        consecutiveAutoSkips = 0;
 
         const overlay = document.createElement('div');
         overlay.id = 'xp-feed-overlay';
@@ -1397,7 +1487,12 @@
                     <span id="xp-drawer-title">播放選集 (${feedItems.length})</span>
                     <button type="button" id="xp-drawer-close" class="xp-fbtn">✕ 關閉</button>
                 </div>
-                <div id="xp-drawer-grid" class="xp-drawer-grid"></div>
+                <div id="xp-drawer-scroll" class="xp-drawer-scroll">
+                    <div id="xp-drawer-grid" class="xp-drawer-grid"></div>
+                    <div class="xp-drawer-more-wrap">
+                        <button type="button" id="xp-drawer-load-more" class="xp-fbtn highlight">＋ 載入更多推文影片</button>
+                    </div>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -1413,7 +1508,9 @@
         const rangeEl = overlay.querySelector('#xp-feed-range');
         const timeEl = overlay.querySelector('#xp-feed-time');
         const drawerEl = overlay.querySelector('#xp-feed-drawer');
+        const drawerScroll = overlay.querySelector('#xp-drawer-scroll');
         const drawerGrid = overlay.querySelector('#xp-drawer-grid');
+        const drawerTitle = overlay.querySelector('#xp-drawer-title');
 
         const previewBox = overlay.querySelector('#xp-feed-preview-box');
         const previewStage = overlay.querySelector('#xp-feed-preview-stage');
@@ -1422,6 +1519,7 @@
         const previewLoading = overlay.querySelector('#xp-feed-preview-loading');
         const previewLabel = overlay.querySelector('#xp-feed-preview-label');
 
+        let slideHeight = Math.round(window.visualViewport?.height || window.innerHeight || 640);
         let previewLoadedId = '';
         let previewVideoUrl = '';
         let previewTargetSec = null;
@@ -1431,8 +1529,35 @@
         let mainWasPlayingBeforeScrub = false;
         let usingMainLiveFallback = false;
 
+        let pendingAdvanceAfterLoad = false;
+        let pendingAdvanceTimer = null;
+        let lastAutoScrollLen = -1;
+
         let scrubbing = false;
         let hudHideTimer = null;
+
+        const applyViewportMetrics = () => {
+            const h = Math.round(window.visualViewport?.height || window.innerHeight || overlay.clientHeight || 640);
+            if (h > 100) {
+                slideHeight = h;
+                overlay.style.setProperty('--xp-slide-h', `${slideHeight}px`);
+                track.classList.add('dragging');
+                track.style.transform = `translate3d(0, -${feedIndex * slideHeight}px, 0)`;
+                requestAnimationFrame(() => track.classList.remove('dragging'));
+            }
+        };
+
+        applyViewportMetrics();
+        window.addEventListener('resize', applyViewportMetrics);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', applyViewportMetrics);
+        }
+        feedResizeCleanup = () => {
+            window.removeEventListener('resize', applyViewportMetrics);
+            if (window.visualViewport) {
+                window.visualViewport.removeEventListener('resize', applyViewportMetrics);
+            }
+        };
 
         const getSlides = () => Array.from(track.querySelectorAll(':scope > .xp-feed-slide'));
         const getSlide = (i) => getSlides()[i] || null;
@@ -1447,6 +1572,15 @@
             }
         };
 
+        const requestMoreAndAdvance = () => {
+            pendingAdvanceAfterLoad = true;
+            clearTimeout(pendingAdvanceTimer);
+            pendingAdvanceTimer = setTimeout(() => { pendingAdvanceAfterLoad = false; }, 4500);
+            triggerBackgroundScrollLoad(true);
+            showFeedHud('⏳ 正在載入更多推文...', 1400);
+        };
+
+        // ==================== 快轉畫面預覽引擎 ====================
         const resetPreviewMedia = () => {
             clearTimeout(previewSeekTimer);
             previewSeekTimer = null;
@@ -1665,10 +1799,34 @@
                     const vw = video.videoWidth || 0;
                     const vh = video.videoHeight || 0;
                     if (vw > 0 && vh > 0) {
+                        const actualOrient = classifyOrientation(vw, vh);
                         item.width = vw;
                         item.height = vh;
-                        item.orientation = vh > vw * 1.03 ? 'portrait' : 'landscape';
-                        if (idx === feedIndex) syncBottomDockToItem(item, vw, vh);
+                        item.orientation = actualOrient;
+                        item.orientationVerified = true;
+                        updatePanelCounts();
+
+                        if (idx === feedIndex) {
+                            syncBottomDockToItem(item, vw, vh);
+                            // 實際解析度與目前選定的橫／豎屏不符時自動跳過
+                            if (cfg.orientation !== 'all' && actualOrient !== cfg.orientation) {
+                                video.pause();
+                                if (consecutiveAutoSkips < 15 && feedIndex < feedItems.length - 1) {
+                                    consecutiveAutoSkips++;
+                                    if (statusEl) {
+                                        statusEl.textContent = `↪ 此片為${actualOrient === 'portrait' ? '豎屏' : '橫屏'}，自動跳下一部...`;
+                                        statusEl.style.display = 'block';
+                                    }
+                                    setTimeout(() => {
+                                        if (feedOpen && feedIndex === idx) goToSlide(idx + 1, true);
+                                    }, 160);
+                                    return;
+                                }
+                                consecutiveAutoSkips = 0;
+                            } else {
+                                consecutiveAutoSkips = 0;
+                            }
+                        }
                     }
                 });
 
@@ -1706,55 +1864,89 @@
             counterEl.textContent = `${feedIndex + 1} / ${feedItems.length}`;
         };
 
-        const renderDrawer = () => {
-            overlay.querySelector('#xp-drawer-title').textContent = `播放選集 (${feedItems.length})`;
-            drawerGrid.innerHTML = '';
-            const frag = document.createDocumentFragment();
-            feedItems.forEach((item, idx) => {
-                const cell = document.createElement('div');
-                cell.className = `xp-drawer-item ${idx === feedIndex ? 'active' : ''}`;
+        // 增量建立選集卡片，避免背景新增影片時清空重繪卡住滑動
+        const buildDrawerCell = (item, idx) => {
+            const cell = document.createElement('div');
+            cell.className = `xp-drawer-item ${idx === feedIndex ? 'active' : ''}`;
+            cell.dataset.idx = String(idx);
 
-                const thumb = document.createElement('div');
-                thumb.className = 'xp-drawer-thumb';
-                if (item.poster) {
-                    const img = document.createElement('img');
-                    img.src = item.poster;
-                    img.loading = 'lazy';
-                    img.alt = '';
-                    thumb.appendChild(img);
-                }
-                const idxSpan = document.createElement('span');
-                idxSpan.className = 'xp-drawer-idx';
-                idxSpan.textContent = `#${idx + 1}`;
-                thumb.appendChild(idxSpan);
+            const thumb = document.createElement('div');
+            thumb.className = 'xp-drawer-thumb';
+            if (item.poster) {
+                const img = document.createElement('img');
+                img.src = item.poster;
+                img.loading = 'lazy';
+                img.alt = '';
+                thumb.appendChild(img);
+            }
+            const idxSpan = document.createElement('span');
+            idxSpan.className = 'xp-drawer-idx';
+            idxSpan.textContent = `#${idx + 1}`;
+            thumb.appendChild(idxSpan);
 
-                if (item.durationText) {
-                    const durSpan = document.createElement('span');
-                    durSpan.className = 'xp-drawer-dur';
-                    durSpan.textContent = item.durationText;
-                    thumb.appendChild(durSpan);
-                }
+            if (item.orientation === 'portrait' || item.orientation === 'landscape') {
+                const oSpan = document.createElement('span');
+                oSpan.className = 'xp-drawer-orient';
+                oSpan.textContent = item.orientation === 'portrait' ? '📱' : '📺';
+                thumb.appendChild(oSpan);
+            }
 
-                const caption = document.createElement('div');
-                caption.className = 'xp-drawer-caption';
-                caption.textContent = item.text || item.authorName || '';
+            if (item.durationText) {
+                const durSpan = document.createElement('span');
+                durSpan.className = 'xp-drawer-dur';
+                durSpan.textContent = item.durationText;
+                thumb.appendChild(durSpan);
+            }
 
-                cell.append(thumb, caption);
-                cell.addEventListener('click', () => {
-                    drawerEl.classList.remove('open');
-                    goToSlide(idx);
-                });
-                frag.appendChild(cell);
+            const caption = document.createElement('div');
+            caption.className = 'xp-drawer-caption';
+            caption.textContent = item.text || item.authorName || '';
+
+            cell.append(thumb, caption);
+            cell.addEventListener('click', () => {
+                drawerEl.classList.remove('open');
+                goToSlide(idx);
             });
-            drawerGrid.appendChild(frag);
+            return cell;
+        };
+
+        const syncDrawerItems = (forceRebuild = false) => {
+            drawerTitle.textContent = `播放選集 (${feedItems.length})`;
+            drawerGrid.classList.toggle('portrait-mode', cfg.orientation === 'portrait');
+
+            if (forceRebuild) {
+                drawerGrid.innerHTML = '';
+            }
+
+            let existing = drawerGrid.children.length;
+            if (existing < feedItems.length) {
+                const frag = document.createDocumentFragment();
+                while (existing < feedItems.length) {
+                    frag.appendChild(buildDrawerCell(feedItems[existing], existing));
+                    existing++;
+                }
+                drawerGrid.appendChild(frag);
+            }
+
+            Array.from(drawerGrid.children).forEach((cell, i) => {
+                cell.classList.toggle('active', i === feedIndex);
+            });
         };
 
         feedOnNewMedia = (newItem) => {
-            if (!feedOpen || feedIdSet.has(newItem.id) || !matchesFilters(newItem)) return;
+            if (!feedOpen || feedIdSet.has(newItem.id) || !matchesFilters(newItem, true)) return;
             feedIdSet.add(newItem.id);
             feedItems.push(newItem);
             syncSlidesDOM();
-            if (drawerEl.classList.contains('open')) renderDrawer();
+            if (drawerEl.classList.contains('open')) {
+                syncDrawerItems(false);
+            }
+            // 若使用者剛剛在底部上滑請求載入，收到新影片立刻自動滑向下一部
+            if (pendingAdvanceAfterLoad && !drawerEl.classList.contains('open') && feedIndex < feedItems.length - 1) {
+                pendingAdvanceAfterLoad = false;
+                clearTimeout(pendingAdvanceTimer);
+                goToSlide(feedIndex + 1);
+            }
         };
 
         const activateSlide = (idx) => {
@@ -1809,16 +2001,19 @@
                 tryPlayVideo(video);
             }
 
-            if (idx >= feedItems.length - 3) {
-                triggerBackgroundScrollLoad();
+            // 接近倒數第 2 部時預抓下一批（每個清單長度只觸發一次，避免狂抓）
+            if (idx >= feedItems.length - 2 && lastAutoScrollLen !== feedItems.length) {
+                lastAutoScrollLen = feedItems.length;
+                triggerBackgroundScrollLoad(false);
             }
         };
 
-        const goToSlide = (targetIdx) => {
+        const goToSlide = (targetIdx, isAutoSkip = false) => {
+            if (!isAutoSkip) consecutiveAutoSkips = 0;
             syncSlidesDOM();
             feedIndex = Math.max(0, Math.min(targetIdx, feedItems.length - 1));
             track.classList.remove('dragging');
-            track.style.transform = `translate3d(0, -${feedIndex * 100}%, 0)`;
+            track.style.transform = `translate3d(0, -${feedIndex * slideHeight}px, 0)`;
             counterEl.textContent = `${feedIndex + 1} / ${feedItems.length}`;
             activateSlide(feedIndex);
         };
@@ -1826,7 +2021,7 @@
 
         const rebuildFeedForCurrentFilter = () => {
             const curId = feedItems[feedIndex]?.id;
-            const filtered = getFilteredPool();
+            const filtered = getFilteredPool(true);
             if (filtered.length === 0) {
                 showFeedHud(`⚠️ 目前沒有符合「${orientLabel(cfg.orientation)}」的影片`, 1400);
                 return;
@@ -1835,8 +2030,12 @@
             track.innerHTML = '';
             feedItems = filtered.slice();
             feedIdSet = new Set(feedItems.map((it) => it.id));
+            lastAutoScrollLen = -1;
             const keepIdx = curId ? feedItems.findIndex((it) => it.id === curId) : -1;
             goToSlide(keepIdx >= 0 ? keepIdx : 0);
+            if (drawerEl.classList.contains('open')) {
+                syncDrawerItems(true);
+            }
         };
 
         const calcRangeThumbX = (ratio) => {
@@ -1990,7 +2189,7 @@
                 const atTop = feedIndex === 0 && dy > 0;
                 const atBottom = feedIndex === feedItems.length - 1 && dy < 0;
                 const offset = (atTop || atBottom) ? dy * 0.28 : dy;
-                track.style.transform = `translate3d(0, calc(-${feedIndex * 100}% + ${offset}px), 0)`;
+                track.style.transform = `translate3d(0, ${-feedIndex * slideHeight + offset}px, 0)`;
             } else if (gestureMode === 'horizontal') {
                 const curVideo = getCurrentVideo();
                 if (curVideo && Number.isFinite(curVideo.duration) && curVideo.duration > 0) {
@@ -2014,13 +2213,12 @@
             const dy = endY - tStartY;
 
             if (gestureMode === 'vertical') {
-                const threshold = Math.min(80, window.innerHeight * 0.14);
+                const threshold = Math.min(80, slideHeight * 0.14);
                 if (dy <= -threshold) {
                     if (feedIndex < feedItems.length - 1) goToSlide(feedIndex + 1);
                     else {
                         goToSlide(feedIndex);
-                        triggerBackgroundScrollLoad();
-                        showFeedHud('⏳ 正在背景載入更多推文...', 1200);
+                        requestMoreAndAdvance();
                     }
                 } else if (dy >= threshold && feedIndex > 0) {
                     goToSlide(feedIndex - 1);
@@ -2085,10 +2283,7 @@
             setTimeout(() => { wheelLock = false; }, 320);
             if (e.deltaY > 0) {
                 if (feedIndex < feedItems.length - 1) goToSlide(feedIndex + 1);
-                else {
-                    triggerBackgroundScrollLoad();
-                    showFeedHud('⏳ 正在背景載入更多推文...', 1200);
-                }
+                else requestMoreAndAdvance();
             } else if (e.deltaY < 0 && feedIndex > 0) {
                 goToSlide(feedIndex - 1);
             }
@@ -2101,12 +2296,24 @@
             updateFeedClockText();
         });
         overlay.querySelector('#xp-feed-drawer-btn').addEventListener('click', () => {
-            renderDrawer();
+            syncDrawerItems(true);
             drawerEl.classList.add('open');
+            setTimeout(() => {
+                const act = drawerGrid.querySelector('.xp-drawer-item.active');
+                if (act) act.scrollIntoView({ block: 'center' });
+            }, 40);
         });
         overlay.querySelector('#xp-drawer-close').addEventListener('click', () => {
             drawerEl.classList.remove('open');
         });
+        overlay.querySelector('#xp-drawer-load-more').addEventListener('click', (e) => {
+            e.stopPropagation();
+            triggerBackgroundScrollLoad(true);
+            showToast('⏳ 正在背景載入更多推文影片...', 1600);
+        });
+        drawerScroll.addEventListener('touchmove', (e) => {
+            e.stopPropagation();
+        }, { passive: true });
 
         startFeedClock();
         goToSlide(feedIndex);
@@ -2122,6 +2329,10 @@
         if (feedCleanupPreview) {
             try { feedCleanupPreview(); } catch {}
             feedCleanupPreview = null;
+        }
+        if (feedResizeCleanup) {
+            try { feedResizeCleanup(); } catch {}
+            feedResizeCleanup = null;
         }
         feedGoToSlide = null;
         feedOnNewMedia = null;
@@ -2156,7 +2367,7 @@
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
             if (feedIndex < feedItems.length - 1 && feedGoToSlide) feedGoToSlide(feedIndex + 1);
-            else triggerBackgroundScrollLoad();
+            else triggerBackgroundScrollLoad(true);
         } else if (e.key === 'ArrowUp' && feedIndex > 0) {
             e.preventDefault();
             if (feedGoToSlide) feedGoToSlide(feedIndex - 1);
@@ -2238,8 +2449,8 @@
                     </div>
                     <div class="xp-seg-3">
                         <button type="button" class="xp-btn" data-orient="all">全部一起</button>
-                        <button type="button" class="xp-btn" data-orient="landscape">📺 橫屏</button>
-                        <button type="button" class="xp-btn" data-orient="portrait">📱 豎屏</button>
+                        <button type="button" class="xp-btn" data-orient="landscape">📺 橫屏 (0)</button>
+                        <button type="button" class="xp-btn" data-orient="portrait">📱 豎屏 (0)</button>
                     </div>
                 </div>
 
@@ -2293,8 +2504,8 @@
 
         panel.querySelector('#xp-btn-rescan').addEventListener('click', () => {
             const added = scanAllPageSources();
-            const matched = getFilteredPool().length;
-            showToast(matched > 0 ? `✅ 已掃描完成：目前可播 ${matched} 部（本次新增 ${added} 部）` : '⚠️ 目前頁面尚未載入影片，請先往下滑過幾則影片貼文再試');
+            const matched = getFilteredPool(true).length;
+            showToast(matched > 0 ? `✅ 已掃描完成：目前可播 ${matched} 部（本次新增 ${added} 部）` : '⚠️ 目前頁面尚未載入符合條件的影片，請先往下滑過幾則影片貼文再試');
         });
 
         panel.querySelector('#xp-panel-toggle').addEventListener('click', () => {
