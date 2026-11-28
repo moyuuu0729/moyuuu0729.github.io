@@ -644,7 +644,7 @@
             <div class="switcher-bar">
                 <button id="btn-prev" class="nav-arrow" type="button" aria-label="上一個腳本">‹</button>
                 <div id="switcher-pills" class="switcher-pills"></div>
-                <span id="switcher-counter" class="switcher-counter">1 / 5</span>
+                <span id="switcher-counter" class="switcher-counter">1 / 6</span>
                 <button id="btn-next" class="nav-arrow" type="button" aria-label="下一個腳本">›</button>
             </div>
 
@@ -715,6 +715,7 @@
             { accent: '#10b981', accent2: '#06b6d4', rgb: '16, 185, 129' }, // 翡翠翠綠
             { accent: '#a855f7', accent2: '#ec4899', rgb: '168, 85, 247' }, // 紫羅蘭
             { accent: '#f59e0b', accent2: '#ef4444', rgb: '245, 158, 11' }, // 琥珀橘金
+            { accent: '#1d9bf0', accent2: '#06b6d4', rgb: '29, 155, 240' }, // X 亮藍
         ];
 
         // ==================== 3. 腳本清單設定 ====================
@@ -812,21 +813,43 @@
                 title: 'SpankBang 全能增強腳本',
                 shortTitle: 'SpankBang 增強',
                 tag: '手機 / 電腦通用',
-                fallbackVersion: '1.0.0',
+                fallbackVersion: '1.1.1',
                 theme: DEFAULT_THEMES[4], // 琥珀橘金外框
                 sites: [
                     { name: 'spankbang.com', url: 'https://spankbang.com/' },
                 ],
-                summary: '為 SpankBang 打造抖音上下滑動連刷模式（支援橫屏／豎屏／全部切換）、徹底隱藏頁面與播放器廣告、獨立分類篩選 SpankBang Gold／Exclusive／AI 標籤與自訂最低片長過濾。',
+                summary: '為 SpankBang 打造抖音上下滑動連刷模式（支援快轉畫面預覽、橫屏／豎屏／全部切換）、徹底隱藏頁面與播放器廣告、隱藏原站雜亂封面標籤並保留 Gold／Exclusive／AI 分類與自訂最低片長過濾。',
                 features: [
-                    '🎬 抖音上下滑動連刷模式＋選集抽屜、手勢快轉與自動翻頁',
+                    '🎬 抖音上下滑動連刷模式＋選集抽屜與自動翻頁',
+                    '🖼️ 抖音快轉即時畫面預覽（橫滑手勢／進度條拖曳與懸停）',
                     '📐 橫屏／豎屏／全部一起自由切換（列表＋抖音實時解析度判別）',
                     '🏷️ 獨立分類 Gold／Exclusive／AI 標籤（自由勾選顯示或全部隱藏）',
+                    '🧹 一鍵隱藏原站雜亂封面標籤，僅保留乾淨腳本分類徽章',
                     '⏱️ 最低片長過濾（3～30 分鐘快捷按鈕＋自訂分鐘數）',
                     '🛡️ 徹底隱藏頁面橫幅、側欄、直播推廣與播放器彈窗廣告',
-                    '⚡ 支援倍速（0.75x～2x）、靜音記憶、雙擊快進退與全螢幕',
-                    '🎯 內建可拖曳「點選隱藏元件」工具，一鍵永久清除指定區塊',
-                    '📊 面板即時統計各標籤數量與已過濾影片數，支援拖曳與收合',
+                    '🎯 內建可拖曳「點選隱藏元件」工具＋倍速、靜音記憶與全螢幕',
+                ],
+            },
+            {
+                file: 'x-plus.user.js',
+                title: 'X (Twitter) 抖音模式增強腳本',
+                shortTitle: 'X 抖音模式',
+                tag: '手機 / 電腦通用',
+                fallbackVersion: '1.0.0',
+                theme: DEFAULT_THEMES[5], // X 亮藍外框
+                sites: [
+                    { name: 'x.com', url: 'https://x.com/' },
+                ],
+                summary: '為 X (Twitter) 打造抖音上下滑動連刷模式，直接攔截 GraphQL 影片串流與預覽流，支援快轉即時畫面預覽、橫屏／豎屏／全部切換、最低片長與 GIF 過濾、自動背景翻頁續刷與隱藏推廣廣告。',
+                features: [
+                    '🎬 抖音上下滑動連刷模式＋3 欄選集抽屜與頂部即時時鐘',
+                    '🖼️ 快轉即時畫面預覽（手機橫滑／進度條拖曳與滑鼠懸停）',
+                    '📐 橫屏／豎屏／全部自由切換（依 API 真實解析度精準分類）',
+                    '♾️ 滑到尾端自動背景捲動翻頁，新載入推文影片無縫續刷',
+                    '⏱️ 最低片長過濾（10秒～10分快捷＋自訂秒數）與 GIF 開關',
+                    '🛡️ 自動攔截並隱藏時間軸推廣廣告推文（不混入連刷清單）',
+                    '⚡ 支援 0.75x～2x 倍速、雙擊 ±10s、展開推文全文與直達原推文',
+                    '📄 自由切換「僅播本頁」或「全部累積」來源，首頁／媒體頁／書籤皆適用',
                 ],
             },
         ];
