@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X (Twitter) 全能增強：抖音模式 / 快轉預覽 / 橫豎屏篩選 / 時長過濾 / 去廣告
+// @name         X (Twitter) 全能增強：抖音模式 / 智能自動拉片 / 純影片搜尋 / 快轉預覽 / 橫豎屏篩選 / 去廣告
 // @namespace    https://x.com/
-// @version      1.2.0
-// @description  為 X (Twitter) 打造抖音上下滑動連刷模式，支援主頁直連 API 攔截＋Redux 記憶體掃描、快轉即時畫面預覽、精準橫屏/豎屏/全部切換、最低片長與 GIF 過濾、自動翻頁續刷與隱藏推廣廣告。
+// @version      1.3.0
+// @description  為 X (Twitter) 打造抖音上下滑動連刷模式，內建防卡死智能節速自動拉片、429 限流自動冷卻、一鍵純影片最新搜尋、快轉即時畫面預覽、精準橫屏/豎屏/全部切換與隱藏推廣廣告。
 // @match        *://x.com/*
 // @match        *://*.x.com/*
 // @match        *://twitter.com/*
@@ -41,10 +41,33 @@
     ];
 
     const AD_TEXT_RE = /^(?:Ad|Promoted|廣告|广告|推廣|推广|プロモーション|Publicidad|Anzeige|Sponsorisé)$/i;
+    const RETRY_TEXT_RE = /^(?:Retry|Try again|重試|重试|再試一次|再试一次)$/i;
+    const RESERVED_PATHS = new Set(['home', 'explore', 'notifications', 'messages', 'search', 'i', 'settings', 'compose', 'bookmarks', 'lists', 'jobs', 'communities', 'tos', 'privacy']);
+    const SKIP_JSON_KEYS = new Set([
+        'clientEventInfo', 'ext_media_color', 'color_info', 'faces', 'features',
+        'feedbackInfo', 'scribe_config', 'advertiser_results', 'highlighted_label',
+        'affiliates_highlighted_label', 'professional', 'tipjar_settings', 'indices', 'rgb'
+    ]);
 
     let cfg = loadCfg();
     let toastTimer = null;
     let cachedReduxStore = null;
+
+    // 網路請求與限流狀態追蹤
+    let apiInFlightCount = 0;
+    let lastApiStartTs = 0;
+    let lastApiFinishTs = 0;
+    let rateLimitUntil = 0;
+
+    // 智能節速自動拉片引擎狀態
+    let harvestActive = false;
+    let harvestTimer = null;
+    let harvestStartMatched = 0;
+    let harvestTargetGain = 30;
+    let harvestStallRounds = 0;
+    let harvestLastTotal = 0;
+    let harvestLastDocHeight = 0;
+    let harvestStatusMsg = '';
 
     let currentRouteKey = computeRouteKey();
     const routeBuckets = new Map(); // routeKey -> Map(mediaKey -> item)
@@ -97,8 +120,10 @@
             return;
         }
         if (nextKey !== currentRouteKey) {
+            if (harvestActive) stopAutoHarvest(false);
             currentRouteKey = nextKey;
             updatePanelCounts();
+            updateQuickRouteBtns();
         }
     }
 
@@ -133,7 +158,7 @@
             right: 12px;
             bottom: calc(16px + env(safe-area-inset-bottom, 0px));
             z-index: 2147483640 !important;
-            width: min(332px, calc(100vw - 24px));
+            width: min(338px, calc(100vw - 24px));
             border-radius: 16px;
             background: rgba(15, 20, 28, 0.96);
             border: 1px solid rgba(29, 155, 240, 0.58);
@@ -169,8 +194,8 @@
             padding: 10px 12px 12px;
             display: flex;
             flex-direction: column;
-            gap: 9px;
-            max-height: min(76vh, 620px);
+            gap: 8px;
+            max-height: min(78vh, 660px);
             overflow-y: auto;
         }
         .xp-top-action-row {
@@ -228,6 +253,11 @@
             border-color: transparent;
             color: #fff;
         }
+        .xp-btn.harvest-on {
+            background: linear-gradient(135deg, #ef4444, #f97316);
+            border-color: transparent;
+            color: #fff;
+        }
         .xp-btn.on {
             background: rgba(29, 155, 240, 0.28);
             border-color: rgba(56, 189, 248, 0.85);
@@ -240,6 +270,19 @@
             padding-top: 5px;
             border-top: 1px solid rgba(255, 255, 255, 0.08);
             font-variant-numeric: tabular-nums;
+        }
+        .xp-harvest-status {
+            font-size: 11px;
+            color: #7dd3fc;
+            text-align: center;
+            padding: 4px 6px;
+            border-radius: 7px;
+            background: rgba(29, 155, 240, 0.14);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            display: none;
+        }
+        .xp-harvest-status.show {
+            display: block;
         }
 
         /* ==================== 抖音模式全螢幕沉浸視窗 ==================== */
@@ -405,6 +448,11 @@
         .xp-fbtn.highlight {
             border-color: rgba(56, 189, 248, 0.9);
             color: #bae6fd;
+        }
+        .xp-fbtn.harvesting {
+            border-color: rgba(249, 115, 22, 0.9);
+            background: rgba(239, 68, 68, 0.72);
+            color: #fff;
         }
 
         #xp-feed-bottom-dock {
@@ -629,7 +677,7 @@
             opacity: 1;
         }
 
-        /* 選集抽屜（獨立觸控捲動，不被外層鎖死或擠壓變形） */
+        /* 選集抽屜 */
         #xp-feed-drawer {
             position: fixed !important;
             top: 0 !important;
@@ -758,6 +806,7 @@
             margin-top: 12px;
             display: flex;
             justify-content: center;
+            gap: 8px;
         }
 
         #xp-toast {
@@ -792,7 +841,7 @@
         (document.head || document.documentElement).appendChild(st);
     }
 
-    function showToast(msg, duration = 2200) {
+    function showToast(msg, duration = 2400) {
         if (!document.body) return;
         let el = document.getElementById('xp-toast');
         if (!el) {
@@ -845,7 +894,242 @@
         return 'unknown';
     }
 
-    // ==================== 2. 四重影片擷取引擎（API + Redux + Fiber + DOM） ====================
+    // ==================== 2. 智能節速自動拉片引擎（防滑太快空白 & 429限流保護） ====================
+    function clickXRetryButton() {
+        const main = document.querySelector('main[role="main"]') || document.body;
+        if (!main) return false;
+        const btns = main.querySelectorAll('button, [role="button"]');
+        for (const btn of btns) {
+            if (btn.closest('#xp-float-panel, #xp-feed-overlay')) continue;
+            if (btn.offsetParent === null) continue;
+            const txt = (btn.textContent || '').trim();
+            if (txt && txt.length <= 16 && RETRY_TEXT_RE.test(txt)) {
+                btn.click();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function updateHarvestUI() {
+        const panelBtn = document.getElementById('xp-btn-harvest');
+        const panelStatus = document.getElementById('xp-harvest-status');
+        const feedBtn = document.getElementById('xp-feed-harvest');
+        const drawerBtn = document.getElementById('xp-drawer-load-more');
+
+        if (panelBtn) {
+            panelBtn.textContent = harvestActive ? '⏹ 停止拉片' : '🧲 自動拉片 (+30)';
+            panelBtn.classList.toggle('harvest-on', harvestActive);
+        }
+        if (panelStatus) {
+            panelStatus.textContent = harvestStatusMsg;
+            panelStatus.classList.toggle('show', Boolean(harvestActive && harvestStatusMsg));
+        }
+        if (feedBtn) {
+            feedBtn.textContent = harvestActive ? '⏹ 停止拉片' : '🧲 拉片';
+            feedBtn.classList.toggle('harvesting', harvestActive);
+        }
+        if (drawerBtn) {
+            drawerBtn.textContent = harvestActive ? '⏹ 停止背景拉片' : '🧲 背景自動拉更多影片 (+30)';
+        }
+    }
+
+    function stopAutoHarvest(notify = false) {
+        harvestActive = false;
+        if (harvestTimer) {
+            clearTimeout(harvestTimer);
+            harvestTimer = null;
+        }
+        harvestStatusMsg = '';
+        updateHarvestUI();
+        if (notify) {
+            showToast(`⏹ 已停止自動拉片，目前可播 ${getFilteredPool(true).length} 部`);
+        }
+    }
+
+    function nudgeTimelineGently(forceNudge = false) {
+        const docEl = document.scrollingElement || document.documentElement;
+        const maxScroll = Math.max(0, (docEl.scrollHeight || 0) - window.innerHeight);
+        const curY = window.scrollY || docEl.scrollTop || 0;
+
+        // 若還沒接近目前頁面底部，用穩定步伐往下滾（一次約 1.1 螢幕高度，避免滑太快被 X 虛擬清單略過）
+        if (curY < maxScroll - window.innerHeight * 0.9) {
+            const step = Math.round(window.innerHeight * 1.08);
+            window.scrollBy({ top: step, behavior: 'auto' });
+            return;
+        }
+
+        // 已在底部：若出現卡住情況，先往上拉 180px 再回到底部，重新觸發 X 底部載入哨兵
+        if (forceNudge) {
+            window.scrollTo(0, Math.max(0, maxScroll - 200));
+            setTimeout(() => {
+                const latestMax = Math.max(0, ((document.scrollingElement || document.documentElement).scrollHeight || 0) - window.innerHeight);
+                window.scrollTo(0, latestMax);
+            }, 220);
+        } else {
+            window.scrollTo(0, maxScroll);
+        }
+    }
+
+    function runHarvestStep() {
+        if (!harvestActive) return;
+
+        const now = Date.now();
+        // 1. 若剛撞到 X 限流 (429)，等待冷卻完成再繼續
+        if (now < rateLimitUntil) {
+            const leftSec = Math.max(1, Math.ceil((rateLimitUntil - now) / 1000));
+            harvestStatusMsg = `⏸ X 暫時限流，${leftSec} 秒後自動繼續拉片...`;
+            updateHarvestUI();
+            harvestTimer = setTimeout(runHarvestStep, 1000);
+            return;
+        }
+
+        // 2. 若有 X 的「重試」按鈕，自動點一下喚醒
+        if (clickXRetryButton()) {
+            harvestStatusMsg = '🔄 偵測到頁面中斷，已自動點擊重試...';
+            updateHarvestUI();
+            harvestTimer = setTimeout(runHarvestStep, 1800);
+            return;
+        }
+
+        // 3. 若目前仍有 GraphQL 請求正在傳輸中（且未超時 6 秒），先等它回傳，避免滑太快變空白
+        if (apiInFlightCount > 0 && now - lastApiStartTs < 6000) {
+            harvestStatusMsg = `⏳ 等待 X 回傳資料中（已收 ${getFilteredPool(true).length} 部）...`;
+            updateHarvestUI();
+            harvestTimer = setTimeout(runHarvestStep, 550);
+            return;
+        }
+
+        // 補掃一次記憶體
+        scanAllPageSources();
+
+        const currentMatched = getFilteredPool(true).length;
+        const gained = currentMatched - harvestStartMatched;
+        if (gained >= harvestTargetGain) {
+            stopAutoHarvest(false);
+            showToast(`✅ 自動拉片完成！新增 ${gained} 部（目前共 ${currentMatched} 部可播）`, 3000);
+            return;
+        }
+
+        const docEl = document.scrollingElement || document.documentElement;
+        const curHeight = docEl.scrollHeight || 0;
+        const totalNow = allMediaMap.size;
+
+        if (totalNow > harvestLastTotal || curHeight > harvestLastDocHeight + 120 || now - lastApiFinishTs < 1700) {
+            harvestStallRounds = 0;
+            harvestLastTotal = totalNow;
+            harvestLastDocHeight = curHeight;
+        } else {
+            harvestStallRounds++;
+        }
+
+        // 連續 7 輪（約 10～12 秒）既沒有新高度、沒有新 API、也沒有新影片，判定真的抵達本頁盡頭
+        if (harvestStallRounds >= 7) {
+            stopAutoHarvest(false);
+            const hint = location.pathname.startsWith('/search') && new URLSearchParams(location.search).get('f') !== 'live'
+                ? '（建議點「🔍 純影片搜(最新)」取得更多結果）'
+                : '';
+            showToast(`🏁 已抵達目前頁面底部，共收錄 ${currentMatched} 部${hint}`, 3600);
+            return;
+        }
+
+        nudgeTimelineGently(harvestStallRounds >= 2);
+        harvestStatusMsg = `🧲 穩定拉片中：+${gained}/${harvestTargetGain} 部（共 ${currentMatched} 部）${harvestStallRounds >= 2 ? ' · 喚醒底部中' : ''}`;
+        updateHarvestUI();
+
+        // 穩定節奏：每次間隔 1.35 秒，避免過快觸發 X 空白或限流
+        harvestTimer = setTimeout(runHarvestStep, 1350);
+    }
+
+    function startAutoHarvest(targetGain = 30) {
+        if (harvestActive) {
+            stopAutoHarvest(true);
+            return;
+        }
+        syncRouteKey();
+        harvestActive = true;
+        harvestTargetGain = targetGain;
+        harvestStartMatched = getFilteredPool(true).length;
+        harvestStallRounds = 0;
+        harvestLastTotal = allMediaMap.size;
+        harvestLastDocHeight = (document.scrollingElement || document.documentElement).scrollHeight || 0;
+        harvestStatusMsg = '🧲 啟動穩定自動拉片...';
+        updateHarvestUI();
+        showToast(`🧲 開始背景穩定拉片（目標 +${targetGain} 部，防滑太快空白）`, 2400);
+        runHarvestStep();
+    }
+
+    function triggerSingleSmartLoad(forceNow = false) {
+        if (!cfg.autoScrollLoad && !forceNow) return;
+        const now = Date.now();
+        if (now < rateLimitUntil) return;
+        if (apiInFlightCount > 0 && now - lastApiStartTs < 5000) return;
+        if (!forceNow && now - lastBgScrollTs < 1700) return;
+        lastBgScrollTs = now;
+
+        clickXRetryButton();
+        nudgeTimelineGently(true);
+        setTimeout(() => {
+            if (feedOpen) scanAllPageSources();
+        }, 1000);
+    }
+
+    // ==================== 3. 純影片搜尋 & 作者媒體頁快捷跳轉 ====================
+    function goPureVideoSearch() {
+        let kw = '';
+        if (location.pathname.startsWith('/search')) {
+            const sp = new URLSearchParams(location.search);
+            kw = (sp.get('q') || '').trim();
+        }
+        if (!kw) {
+            const input = prompt('輸入要搜尋的影片關鍵字（將自動套用 filter:videos＋最新排序，影片量最多）：', '');
+            if (!input || !input.trim()) return;
+            kw = input.trim();
+        }
+
+        // 移除舊的 filter:images 等互斥條件，確保加上 filter:videos
+        let cleanQ = kw.replace(/\s*-?filter:(?:images|media)\b/gi, '').trim();
+        if (!/\bfilter:(?:videos|native_video)\b/i.test(cleanQ)) {
+            cleanQ = `${cleanQ} filter:videos`;
+        }
+
+        const sp = new URLSearchParams();
+        sp.set('q', cleanQ);
+        sp.set('src', 'typed_query');
+        sp.set('f', 'live');
+        location.href = `${location.origin}/search?${sp.toString()}`;
+    }
+
+    function getCurrentProfileUsername() {
+        const segs = (location.pathname || '/').split('/').filter(Boolean);
+        if (segs.length === 0) return '';
+        const first = segs[0];
+        if (RESERVED_PATHS.has(first.toLowerCase())) return '';
+        if (!/^[A-Za-z0-9_]{1,20}$/.test(first)) return '';
+        return first;
+    }
+
+    function updateQuickRouteBtns() {
+        const mediaBtn = document.getElementById('xp-btn-media-tab');
+        if (!mediaBtn) return;
+        const user = getCurrentProfileUsername();
+        const alreadyMedia = user && location.pathname.toLowerCase().endsWith('/media');
+        if (user && !alreadyMedia) {
+            mediaBtn.textContent = `🖼️ @${user} 媒體頁`;
+            mediaBtn.disabled = false;
+            mediaBtn.style.opacity = '1';
+        } else if (alreadyMedia) {
+            mediaBtn.textContent = '🖼️ 已在媒體頁';
+            mediaBtn.disabled = true;
+            mediaBtn.style.opacity = '0.55';
+        } else {
+            mediaBtn.textContent = '🖼️ 進作者媒體頁';
+            mediaBtn.disabled = false;
+            mediaBtn.style.opacity = '0.8';
+        }
+    }
+
+    // ==================== 4. 四重影片擷取引擎（API + Redux + Fiber + DOM） ====================
     function isCandidateApiUrl(rawUrl) {
         const u = String(rawUrl || '');
         if (!u) return true;
@@ -915,7 +1199,6 @@
         const durationMs = Number(m.video_info?.duration_millis || 0);
         const durationSec = durationMs > 0 ? Math.round(durationMs / 1000) : (isGif ? 0 : -1);
 
-        // 優先採用真實影片串流 URL 尺寸與 video_info.aspect_ratio，避免被 16:9 縮圖誤判
         let width = 0;
         let height = 0;
         const fromUrl = parseDimensionsFromUrl(mp4s[0]?.url || previewUrl || playUrl);
@@ -972,10 +1255,10 @@
     function extractMediaFromJson(root, baseCtx = {}) {
         if (!root || typeof root !== 'object') return;
         const visited = new Set();
-        let nodeBudget = 30000;
+        let nodeBudget = 200000;
 
         const walk = (node, depth, ctx) => {
-            if (!node || typeof node !== 'object' || depth > 32 || nodeBudget <= 0 || visited.has(node)) return;
+            if (!node || typeof node !== 'object' || depth > 40 || nodeBudget <= 0 || visited.has(node)) return;
             visited.add(node);
             nodeBudget--;
 
@@ -1041,7 +1324,9 @@
 
             const keys = Object.keys(node);
             for (let i = 0; i < keys.length; i++) {
-                const val = node[keys[i]];
+                const k = keys[i];
+                if (SKIP_JSON_KEYS.has(k)) continue;
+                const val = node[k];
                 if (val && typeof val === 'object') {
                     walk(val, depth + 1, nextCtx);
                 }
@@ -1058,6 +1343,14 @@
             const json = JSON.parse(text);
             extractMediaFromJson(json);
         } catch {}
+    }
+
+    function handleRateLimitHit() {
+        const now = Date.now();
+        if (now >= rateLimitUntil) {
+            rateLimitUntil = now + 25000;
+            showToast('⚠️ X 觸發請求頻率限制 (429)，已自動冷卻 25 秒防鎖帳', 3600);
+        }
     }
 
     function installApiHooks() {
@@ -1089,19 +1382,35 @@
         if (typeof window.fetch === 'function' && !window.__xpFetchHooked) {
             const origFetch = window.fetch;
             window.fetch = function (...args) {
-                const promise = origFetch.apply(this, args);
+                let tracked = false;
                 try {
                     const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
                     if (isCandidateApiUrl(reqUrl)) {
-                        promise.then((res) => {
-                            if (res && res.ok) {
-                                const cloned = res.clone();
-                                cloned.__xpSkip = true;
-                                cloned.text().then(processApiText).catch(() => {});
-                            }
-                        }).catch(() => {});
+                        tracked = true;
+                        apiInFlightCount++;
+                        lastApiStartTs = Date.now();
                     }
                 } catch {}
+
+                const promise = origFetch.apply(this, args);
+                if (tracked) {
+                    promise.then((res) => {
+                        apiInFlightCount = Math.max(0, apiInFlightCount - 1);
+                        lastApiFinishTs = Date.now();
+                        if (res && res.status === 429) {
+                            handleRateLimitHit();
+                            return;
+                        }
+                        if (res && res.ok) {
+                            const cloned = res.clone();
+                            cloned.__xpSkip = true;
+                            cloned.text().then(processApiText).catch(() => {});
+                        }
+                    }).catch(() => {
+                        apiInFlightCount = Math.max(0, apiInFlightCount - 1);
+                        lastApiFinishTs = Date.now();
+                    });
+                }
                 return promise;
             };
             window.__xpFetchHooked = true;
@@ -1116,6 +1425,13 @@
             };
             XMLHttpRequest.prototype.send = function (...args) {
                 if (isCandidateApiUrl(this.__xpUrl)) {
+                    apiInFlightCount++;
+                    lastApiStartTs = Date.now();
+                    this.addEventListener('loadend', function () {
+                        apiInFlightCount = Math.max(0, apiInFlightCount - 1);
+                        lastApiFinishTs = Date.now();
+                        if (this.status === 429) handleRateLimitHit();
+                    });
                     this.addEventListener('load', function () {
                         try {
                             if (this.responseType === 'json' && this.response) {
@@ -1282,7 +1598,7 @@
         return n1 + n2;
     }
 
-    // ==================== 3. 廣告隱藏與篩選規則 ====================
+    // ==================== 5. 廣告隱藏與篩選規則 ====================
     function hidePromotedTweets() {
         if (!cfg.blockAds || feedOpen || document.hidden) return;
 
@@ -1360,7 +1676,7 @@
         }
     }
 
-    // ==================== 4. 抖音模式（固定像素高度防變形 + 獨立抽屜捲動 + 快轉預覽） ====================
+    // ==================== 6. 抖音模式 ====================
     function updateFeedClockText() {
         const el = document.getElementById('xp-feed-clock');
         if (!el) return;
@@ -1390,21 +1706,6 @@
         }
     }
 
-    function triggerBackgroundScrollLoad(forceNow = false) {
-        if (!cfg.autoScrollLoad && !forceNow) return;
-        const now = Date.now();
-        if (!forceNow && now - lastBgScrollTs < 1800) return;
-        lastBgScrollTs = now;
-        try {
-            window.scrollBy({ top: Math.max(900, window.innerHeight * 1.4), behavior: 'instant' });
-        } catch {
-            window.scrollBy(0, Math.max(900, window.innerHeight * 1.4));
-        }
-        setTimeout(() => {
-            if (feedOpen) scanAllPageSources();
-        }, 900);
-    }
-
     function openFeedMode(startIdx = 0) {
         if (feedOpen) return;
         scanAllPageSources();
@@ -1412,14 +1713,12 @@
         let initialList = getFilteredPool(true);
         if (initialList.length === 0 && cfg.orientation !== 'all') {
             const unknownOnly = getPoolItems().filter((it) => it.orientation === 'unknown' && matchesFilters(it, false));
-            if (unknownOnly.length > 0) {
-                initialList = unknownOnly;
-            }
+            if (unknownOnly.length > 0) initialList = unknownOnly;
         }
         if (initialList.length === 0) {
             const tip = cfg.orientation !== 'all'
-                ? `⚠️ 目前尚未收到符合「${orientLabel(cfg.orientation)}」的影片，請先切回「全部」或往下滑過更多影片`
-                : '⚠️ 目前尚未掃到符合條件的影片，請先往下滑過影片貼文或放寬篩選條件';
+                ? `⚠️ 目前尚未收到「${orientLabel(cfg.orientation)}」影片，可先點「🧲 自動拉片」或切回全部`
+                : '⚠️ 目前尚未掃到影片，請先點「🧲 自動拉片」或「🔍 純影片搜(最新)」';
             showToast(tip, 3200);
             return;
         }
@@ -1443,6 +1742,7 @@
                     <span id="xp-feed-counter" class="xp-fbtn">1 / ${feedItems.length}</span>
                 </div>
                 <div class="xp-feed-top-group">
+                    <button type="button" id="xp-feed-harvest" class="xp-fbtn ${harvestActive ? 'harvesting' : 'highlight'}" title="背景穩定自動拉取更多影片">${harvestActive ? '⏹ 停止拉片' : '🧲 拉片'}</button>
                     <button type="button" id="xp-feed-orient" class="xp-fbtn ${cfg.orientation !== 'all' ? 'highlight' : ''}" title="切換 全部 / 橫屏 / 豎屏">${orientLabel(cfg.orientation)}</button>
                     <button type="button" id="xp-feed-drawer-btn" class="xp-fbtn">☰ 選集</button>
                     <button type="button" id="xp-feed-clock" class="xp-fbtn" title="點擊切換顯示秒數">00:00</button>
@@ -1490,7 +1790,7 @@
                 <div id="xp-drawer-scroll" class="xp-drawer-scroll">
                     <div id="xp-drawer-grid" class="xp-drawer-grid"></div>
                     <div class="xp-drawer-more-wrap">
-                        <button type="button" id="xp-drawer-load-more" class="xp-fbtn highlight">＋ 載入更多推文影片</button>
+                        <button type="button" id="xp-drawer-load-more" class="xp-fbtn highlight">${harvestActive ? '⏹ 停止背景拉片' : '🧲 背景自動拉更多影片 (+30)'}</button>
                     </div>
                 </div>
             </div>
@@ -1531,7 +1831,6 @@
 
         let pendingAdvanceAfterLoad = false;
         let pendingAdvanceTimer = null;
-        let lastAutoScrollLen = -1;
 
         let scrubbing = false;
         let hudHideTimer = null;
@@ -1575,9 +1874,13 @@
         const requestMoreAndAdvance = () => {
             pendingAdvanceAfterLoad = true;
             clearTimeout(pendingAdvanceTimer);
-            pendingAdvanceTimer = setTimeout(() => { pendingAdvanceAfterLoad = false; }, 4500);
-            triggerBackgroundScrollLoad(true);
-            showFeedHud('⏳ 正在載入更多推文...', 1400);
+            pendingAdvanceTimer = setTimeout(() => { pendingAdvanceAfterLoad = false; }, 12000);
+            if (!harvestActive) {
+                startAutoHarvest(15);
+            } else {
+                triggerSingleSmartLoad(true);
+            }
+            showFeedHud('🧲 正在背景穩定拉取下一批影片...', 1600);
         };
 
         // ==================== 快轉畫面預覽引擎 ====================
@@ -1808,7 +2111,6 @@
 
                         if (idx === feedIndex) {
                             syncBottomDockToItem(item, vw, vh);
-                            // 實際解析度與目前選定的橫／豎屏不符時自動跳過
                             if (cfg.orientation !== 'all' && actualOrient !== cfg.orientation) {
                                 video.pause();
                                 if (consecutiveAutoSkips < 15 && feedIndex < feedItems.length - 1) {
@@ -1864,7 +2166,6 @@
             counterEl.textContent = `${feedIndex + 1} / ${feedItems.length}`;
         };
 
-        // 增量建立選集卡片，避免背景新增影片時清空重繪卡住滑動
         const buildDrawerCell = (item, idx) => {
             const cell = document.createElement('div');
             cell.className = `xp-drawer-item ${idx === feedIndex ? 'active' : ''}`;
@@ -1941,7 +2242,6 @@
             if (drawerEl.classList.contains('open')) {
                 syncDrawerItems(false);
             }
-            // 若使用者剛剛在底部上滑請求載入，收到新影片立刻自動滑向下一部
             if (pendingAdvanceAfterLoad && !drawerEl.classList.contains('open') && feedIndex < feedItems.length - 1) {
                 pendingAdvanceAfterLoad = false;
                 clearTimeout(pendingAdvanceTimer);
@@ -2001,10 +2301,9 @@
                 tryPlayVideo(video);
             }
 
-            // 接近倒數第 2 部時預抓下一批（每個清單長度只觸發一次，避免狂抓）
-            if (idx >= feedItems.length - 2 && lastAutoScrollLen !== feedItems.length) {
-                lastAutoScrollLen = feedItems.length;
-                triggerBackgroundScrollLoad(false);
+            // 接近尾端（剩不到 4 部）時自動啟動背景節速拉片，持續補新影片
+            if (cfg.autoScrollLoad && idx >= feedItems.length - 4 && !harvestActive) {
+                startAutoHarvest(15);
             }
         };
 
@@ -2030,7 +2329,6 @@
             track.innerHTML = '';
             feedItems = filtered.slice();
             feedIdSet = new Set(feedItems.map((it) => it.id));
-            lastAutoScrollLen = -1;
             const keepIdx = curId ? feedItems.findIndex((it) => it.id === curId) : -1;
             goToSlide(keepIdx >= 0 ? keepIdx : 0);
             if (drawerEl.classList.contains('open')) {
@@ -2149,6 +2447,11 @@
             } else if (curVideo?.webkitEnterFullscreen) {
                 curVideo.webkitEnterFullscreen();
             }
+        });
+
+        overlay.querySelector('#xp-feed-harvest').addEventListener('click', (e) => {
+            e.stopPropagation();
+            startAutoHarvest(30);
         });
 
         orientBtn.addEventListener('click', (e) => {
@@ -2308,8 +2611,7 @@
         });
         overlay.querySelector('#xp-drawer-load-more').addEventListener('click', (e) => {
             e.stopPropagation();
-            triggerBackgroundScrollLoad(true);
-            showToast('⏳ 正在背景載入更多推文影片...', 1600);
+            startAutoHarvest(30);
         });
         drawerScroll.addEventListener('touchmove', (e) => {
             e.stopPropagation();
@@ -2367,7 +2669,7 @@
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
             if (feedIndex < feedItems.length - 1 && feedGoToSlide) feedGoToSlide(feedIndex + 1);
-            else triggerBackgroundScrollLoad(true);
+            else if (!harvestActive) startAutoHarvest(15);
         } else if (e.key === 'ArrowUp' && feedIndex > 0) {
             e.preventDefault();
             if (feedGoToSlide) feedGoToSlide(feedIndex - 1);
@@ -2384,7 +2686,7 @@
         }
     });
 
-    // ==================== 5. 右下角懸浮控制面板 ====================
+    // ==================== 7. 右下角懸浮控制面板 ====================
     function syncPanelUI() {
         const panel = document.getElementById('xp-float-panel');
         if (!panel) return;
@@ -2419,6 +2721,8 @@
             scopeBtn.textContent = cfg.scopeMode === 'page' ? '📄 來源：本頁' : '🌐 來源：全部累積';
             scopeBtn.classList.toggle('on', cfg.scopeMode === 'all');
         }
+        updateHarvestUI();
+        updateQuickRouteBtns();
     }
 
     function createFloatingPanel() {
@@ -2440,6 +2744,18 @@
                 <div class="xp-top-action-row">
                     <button type="button" id="xp-btn-feed" class="xp-btn accent" style="flex:1;padding:8px;font-size:13px;">🎬 進入抖音模式 (0)</button>
                     <button type="button" id="xp-btn-rescan" class="xp-btn" style="padding:8px 10px;" title="立即重新掃描目前頁面影片">🔄 重掃</button>
+                </div>
+
+                <div class="xp-section">
+                    <div class="xp-section-title">
+                        <span>🚀 擴充影片量（防滑太快空白）</span>
+                    </div>
+                    <div class="xp-grid-2">
+                        <button type="button" id="xp-btn-harvest" class="xp-btn">🧲 自動拉片 (+30)</button>
+                        <button type="button" id="xp-btn-vsearch" class="xp-btn">🔍 純影片搜(最新)</button>
+                    </div>
+                    <button type="button" id="xp-btn-media-tab" class="xp-btn">🖼️ 進作者媒體頁</button>
+                    <div id="xp-harvest-status" class="xp-harvest-status"></div>
                 </div>
 
                 <div class="xp-section">
@@ -2503,9 +2819,22 @@
         panel.querySelector('#xp-btn-feed-mini').addEventListener('click', () => openFeedMode(0));
 
         panel.querySelector('#xp-btn-rescan').addEventListener('click', () => {
+            clickXRetryButton();
             const added = scanAllPageSources();
             const matched = getFilteredPool(true).length;
-            showToast(matched > 0 ? `✅ 已掃描完成：目前可播 ${matched} 部（本次新增 ${added} 部）` : '⚠️ 目前頁面尚未載入符合條件的影片，請先往下滑過幾則影片貼文再試');
+            showToast(matched > 0 ? `✅ 已掃描完成：目前可播 ${matched} 部（本次新增 ${added} 部）` : '⚠️ 目前頁面尚未載入符合條件的影片，可點「🧲 自動拉片」或「🔍 純影片搜(最新)」');
+        });
+
+        panel.querySelector('#xp-btn-harvest').addEventListener('click', () => startAutoHarvest(30));
+        panel.querySelector('#xp-btn-vsearch').addEventListener('click', goPureVideoSearch);
+
+        panel.querySelector('#xp-btn-media-tab').addEventListener('click', () => {
+            const user = getCurrentProfileUsername();
+            if (!user) {
+                showToast('💡 請先點進任一創作者主頁，再點此按鈕一鍵進入媒體牆');
+                return;
+            }
+            location.href = `${location.origin}/${user}/media`;
         });
 
         panel.querySelector('#xp-panel-toggle').addEventListener('click', () => {
@@ -2577,7 +2906,7 @@
             cfg.autoScrollLoad = !cfg.autoScrollLoad;
             saveCfg();
             syncPanelUI();
-            showToast(cfg.autoScrollLoad ? '♾️ 抖音模式自動背景翻頁已開啟' : '自動背景翻頁已關閉');
+            showToast(cfg.autoScrollLoad ? '♾️ 抖音模式自動背景拉片已開啟' : '自動背景拉片已關閉');
         });
 
         panel.querySelector('#xp-btn-scope').addEventListener('click', () => {
@@ -2592,7 +2921,7 @@
         updatePanelCounts();
     }
 
-    // ==================== 6. 啟動與 SPA 路由監聽 ====================
+    // ==================== 8. 啟動與 SPA 路由監聽 ====================
     injectBaseStyles();
     installApiHooks();
 
