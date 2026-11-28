@@ -1,16 +1,13 @@
 // ==UserScript==
 // @name         X (Twitter) 全能增強：抖音模式 / 快轉預覽 / 橫豎屏篩選 / 時長過濾 / 去廣告
 // @namespace    https://x.com/
-// @version      1.0.0
-// @description  為 X (Twitter) 打造抖音上下滑動連刷模式，支援 GraphQL 串流攔截、快轉即時畫面預覽、橫屏/豎屏/全部切換、最低片長與 GIF 過濾、自動翻頁續刷與隱藏推廣廣告。
+// @version      1.1.0
+// @description  為 X (Twitter) 打造抖音上下滑動連刷模式，支援主頁直連 API 攔截＋Redux 記憶體掃描、快轉即時畫面預覽、橫屏/豎屏/全部切換、最低片長與 GIF 過濾、自動翻頁續刷與隱藏推廣廣告。
 // @match        *://x.com/*
 // @match        *://*.x.com/*
 // @match        *://twitter.com/*
 // @match        *://*.twitter.com/*
-// @grant        GM_addStyle
-// @grant        GM_getValue
-// @grant        GM_setValue
-// @grant        unsafeWindow
+// @grant        none
 // @run-at       document-start
 // @updateURL    https://moyuuu0729.github.io/x-plus.user.js
 // @downloadURL  https://moyuuu0729.github.io/x-plus.user.js
@@ -47,13 +44,12 @@
 
     let cfg = loadCfg();
     let toastTimer = null;
+    let cachedReduxStore = null;
 
-    // 影片收集庫：依頁面分桶 + 全域累積
     let currentRouteKey = computeRouteKey();
     const routeBuckets = new Map(); // routeKey -> Map(mediaKey -> item)
     const allMediaMap = new Map();  // mediaKey -> item
 
-    // 抖音模式狀態
     let feedOpen = false;
     let feedItems = [];
     let feedIdSet = new Set();
@@ -68,8 +64,8 @@
 
     function loadCfg() {
         try {
-            const raw = GM_getValue(CFG_KEY, null);
-            const saved = !raw ? {} : (typeof raw === 'string' ? JSON.parse(raw) : raw);
+            const raw = localStorage.getItem(CFG_KEY);
+            const saved = raw ? JSON.parse(raw) : {};
             return Object.assign({}, DEFAULT_CFG, saved, {
                 minSeconds: Math.max(0, Number(saved.minSeconds) || 0)
             });
@@ -80,23 +76,21 @@
 
     function saveCfg() {
         try {
-            GM_setValue(CFG_KEY, cfg);
+            localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
         } catch {}
     }
 
     function computeRouteKey() {
         const path = location.pathname || '/';
         if (path.startsWith('/search')) {
-            const q = new URLSearchParams(location.search).get('q') || '';
-            const f = new URLSearchParams(location.search).get('f') || '';
-            return `/search?q=${q}&f=${f}`;
+            const sp = new URLSearchParams(location.search);
+            return `/search?q=${sp.get('q') || ''}&f=${sp.get('f') || ''}`;
         }
         return path;
     }
 
     function syncRouteKey() {
         const nextKey = computeRouteKey();
-        // 點進單篇推文彈窗（/status/）時保留背景清單分桶，不切換分桶
         if (/\/status\/\d+/.test(location.pathname) && routeBuckets.has(currentRouteKey) && routeBuckets.get(currentRouteKey).size > 0) {
             return;
         }
@@ -128,7 +122,6 @@
             display: none !important;
         }
 
-        /* ==================== 右下角懸浮控制面板 ==================== */
         #xp-float-panel,
         #xp-float-panel * {
             box-sizing: border-box;
@@ -177,6 +170,10 @@
             gap: 9px;
             max-height: min(76vh, 620px);
             overflow-y: auto;
+        }
+        .xp-top-action-row {
+            display: flex;
+            gap: 6px;
         }
         .xp-section {
             display: flex;
@@ -741,13 +738,11 @@
     `;
 
     function injectBaseStyles() {
-        if (typeof GM_addStyle === 'function') {
-            GM_addStyle(BASE_CSS);
-        } else {
-            const st = document.createElement('style');
-            st.textContent = BASE_CSS;
-            (document.head || document.documentElement).appendChild(st);
-        }
+        if (document.getElementById('xp-base-style')) return;
+        const st = document.createElement('style');
+        st.id = 'xp-base-style';
+        st.textContent = BASE_CSS;
+        (document.head || document.documentElement).appendChild(st);
     }
 
     function showToast(msg, duration = 2200) {
@@ -786,10 +781,12 @@
         return `≥${Math.floor(sec / 60)}分${sec % 60}秒`;
     }
 
-    // ==================== 2. GraphQL / API 影片串流即時攔截器 ====================
-    function isTargetApiUrl(rawUrl) {
+    // ==================== 2. 四重影片擷取引擎（API + Redux + Fiber + DOM） ====================
+    function isCandidateApiUrl(rawUrl) {
         const u = String(rawUrl || '');
-        return /(?:\/i\/api\/(?:graphql|2|1\.1)\/|\/graphql\/)/i.test(u);
+        if (!u) return true;
+        if (/\.(?:js|css|png|jpg|jpeg|webp|svg|woff2?|ico|mp4|m3u8|ts|m4s)(?:\?|$)/i.test(u)) return false;
+        return /(?:x\.com|twitter\.com|\/i\/api\/|\/graphql\/|\/2\/|\/1\.1\/)/i.test(u);
     }
 
     function cleanTweetText(rawText) {
@@ -800,248 +797,420 @@
     }
 
     function registerMediaItem(item) {
-        if (!item || !item.id || !item.playUrl) return;
+        if (!item || !item.id || !item.playUrl) return false;
         syncRouteKey();
 
         const bucket = getCurrentRouteBucket();
-        const isNewInAll = !allMediaMap.has(item.id);
-        const isNewInRoute = !bucket.has(item.id);
-
-        if (isNewInRoute) bucket.set(item.id, item);
-        if (isNewInAll) allMediaMap.set(item.id, item);
-
-        if (isNewInRoute || isNewInAll) {
-            updatePanelCounts();
-            if (feedOpen && typeof feedOnNewMedia === 'function') {
-                feedOnNewMedia(item);
+        const prev = allMediaMap.get(item.id);
+        // 若已有相同影片但先前缺少作者/推文資訊，則補齊更新
+        if (prev) {
+            if (!prev.text && item.text) prev.text = item.text;
+            if ((!prev.screenName) && item.screenName) {
+                prev.screenName = item.screenName;
+                prev.authorName = item.authorName || prev.authorName;
+                prev.authorUrl = item.authorUrl || prev.authorUrl;
             }
+            if (!prev.poster && item.poster) prev.poster = item.poster;
+            if (!bucket.has(item.id)) {
+                bucket.set(item.id, prev);
+                updatePanelCounts();
+                if (feedOpen && typeof feedOnNewMedia === 'function') feedOnNewMedia(prev);
+                return true;
+            }
+            return false;
         }
+
+        allMediaMap.set(item.id, item);
+        bucket.set(item.id, item);
+        updatePanelCounts();
+        if (feedOpen && typeof feedOnNewMedia === 'function') {
+            feedOnNewMedia(item);
+        }
+        return true;
     }
 
-    function ingestTweetMedia(tweetId, authorName, screenName, fullText, mediaList, likes = 0) {
-        if (!Array.isArray(mediaList) || mediaList.length === 0) return;
+    function ingestSingleMedia(m, ctx = {}, idx = 0) {
+        if (!m || typeof m !== 'object') return;
+        const variants = Array.isArray(m.video_info?.variants) ? m.video_info.variants : [];
+        if (variants.length === 0) return;
 
-        mediaList.forEach((m, idx) => {
-            if (!m || (m.type !== 'video' && m.type !== 'animated_gif')) return;
-            const variants = Array.isArray(m.video_info?.variants) ? m.video_info.variants : [];
-            if (variants.length === 0) return;
+        const mp4s = variants
+            .filter((v) => v && v.url && (/mp4/i.test(v.content_type || '') || /\.mp4(?:\?|$)/i.test(v.url)))
+            .sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
 
-            const mp4s = variants
-                .filter((v) => v && v.url && (/mp4/i.test(v.content_type || '') || /\.mp4(?:\?|$)/i.test(v.url)))
-                .sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
+        const hls = variants.find((v) => v && v.url && (/mpegurl/i.test(v.content_type || '') || /\.m3u8(?:\?|$)/i.test(v.url)));
+        const playUrl = mp4s[0]?.url || hls?.url || '';
+        if (!playUrl) return;
 
-            const hls = variants.find((v) => v && v.url && (/mpegurl/i.test(v.content_type || '') || /\.m3u8(?:\?|$)/i.test(v.url)));
+        const previewUrl = mp4s.length > 0 ? mp4s[mp4s.length - 1].url : '';
+        const isGif = m.type === 'animated_gif';
+        const durationMs = Number(m.video_info?.duration_millis || 0);
+        const durationSec = durationMs > 0 ? Math.round(durationMs / 1000) : (isGif ? 0 : -1);
 
-            const playUrl = mp4s[0]?.url || hls?.url || '';
-            if (!playUrl) return;
-            const previewUrl = mp4s.length > 0 ? mp4s[mp4s.length - 1].url : '';
+        let width = Number(m.original_info?.width || m.sizes?.large?.w || m.sizes?.medium?.w || 0);
+        let height = Number(m.original_info?.height || m.sizes?.large?.h || m.sizes?.medium?.h || 0);
+        if ((!width || !height) && Array.isArray(m.video_info?.aspect_ratio) && m.video_info.aspect_ratio.length === 2) {
+            width = Number(m.video_info.aspect_ratio[0]) || 0;
+            height = Number(m.video_info.aspect_ratio[1]) || 0;
+        }
+        const orientation = (width > 0 && height > 0)
+            ? (height > width * 1.03 ? 'portrait' : 'landscape')
+            : 'unknown';
 
-            const isGif = m.type === 'animated_gif';
-            const durationMs = Number(m.video_info?.duration_millis || 0);
-            const durationSec = durationMs > 0 ? Math.round(durationMs / 1000) : (isGif ? 0 : -1);
+        const tweetId = String(ctx.tweetId || '');
+        const screenName = String(ctx.screenName || '');
+        const authorName = String(ctx.authorName || (screenName ? `@${screenName}` : 'X 用戶'));
+        const mediaKey = String(m.media_key || m.id_str || m.id || `${tweetId || 'v'}_${playUrl.split('?')[0].slice(-24)}_${idx}`);
+        const tweetUrl = tweetId
+            ? `https://x.com/${screenName || 'i'}/status/${tweetId}`
+            : (m.expanded_url || location.href);
 
-            let width = Number(m.original_info?.width || m.sizes?.large?.w || 0);
-            let height = Number(m.original_info?.height || m.sizes?.large?.h || 0);
-            if ((!width || !height) && Array.isArray(m.video_info?.aspect_ratio) && m.video_info.aspect_ratio.length === 2) {
-                width = Number(m.video_info.aspect_ratio[0]) || 0;
-                height = Number(m.video_info.aspect_ratio[1]) || 0;
-            }
-            const orientation = (width > 0 && height > 0)
-                ? (height > width * 1.03 ? 'portrait' : 'landscape')
-                : 'unknown';
-
-            const mediaKey = m.media_key || m.id_str || `${tweetId}_${idx}`;
-            const handle = screenName ? `@${screenName}` : '';
-            const tweetUrl = tweetId
-                ? `https://x.com/${screenName || 'i'}/status/${tweetId}`
-                : location.href;
-
-            registerMediaItem({
-                id: String(mediaKey),
-                tweetId: String(tweetId || ''),
-                authorName: authorName || handle || 'X 用戶',
-                screenName: screenName || '',
-                authorUrl: screenName ? `https://x.com/${screenName}` : '',
-                text: cleanTweetText(fullText),
-                tweetUrl,
-                poster: m.media_url_https || m.media_url || '',
-                playUrl,
-                previewUrl,
-                isGif,
-                durationSec,
-                durationText: isGif ? 'GIF' : (durationSec > 0 ? formatSec(durationSec) : ''),
-                width,
-                height,
-                orientation,
-                likes: Number(likes) || 0
-            });
+        registerMediaItem({
+            id: mediaKey,
+            tweetId,
+            authorName,
+            screenName,
+            authorUrl: screenName ? `https://x.com/${screenName}` : '',
+            text: cleanTweetText(ctx.fullText || ''),
+            tweetUrl,
+            poster: m.media_url_https || m.media_url || '',
+            playUrl,
+            previewUrl,
+            isGif,
+            durationSec,
+            durationText: isGif ? 'GIF' : (durationSec > 0 ? formatSec(durationSec) : ''),
+            width,
+            height,
+            orientation
         });
     }
 
     function extractUserFields(userObj) {
-        if (!userObj || typeof userObj !== 'object') return { name: '', screenName: '' };
+        if (!userObj || typeof userObj !== 'object') return { authorName: '', screenName: '' };
         const res = userObj.result || userObj;
-        const name = res?.core?.name || res?.legacy?.name || '';
-        const screenName = res?.core?.screen_name || res?.legacy?.screen_name || '';
-        return { name, screenName };
+        const authorName = res?.core?.name || res?.legacy?.name || res?.name || '';
+        const screenName = res?.core?.screen_name || res?.legacy?.screen_name || res?.screen_name || '';
+        return { authorName, screenName };
     }
 
-    function extractMediaFromJson(root) {
+    function extractMediaFromJson(root, baseCtx = {}) {
         if (!root || typeof root !== 'object') return;
         const visited = new Set();
+        let nodeBudget = 30000;
 
-        const walk = (node, depth) => {
-            if (!node || typeof node !== 'object' || depth > 28 || visited.has(node)) return;
+        const walk = (node, depth, ctx) => {
+            if (!node || typeof node !== 'object' || depth > 32 || nodeBudget <= 0 || visited.has(node)) return;
             visited.add(node);
+            nodeBudget--;
 
             if (Array.isArray(node)) {
-                for (let i = 0; i < node.length; i++) walk(node[i], depth + 1);
+                for (let i = 0; i < node.length; i++) walk(node[i], depth + 1, ctx);
                 return;
             }
 
-            // 跳過推廣廣告項目
+            // 排除推廣廣告節點
             if (cfg.blockAds && (node.promotedMetadata || node.adMetadata || node.__typename === 'TimelinePromotedTweet')) {
                 return;
             }
 
-            // 處理 REST v2 globalObjects
+            // 處理 globalObjects（v2 REST 與部分書籤/通知結構）
             if (node.globalObjects?.tweets && typeof node.globalObjects.tweets === 'object') {
                 const users = node.globalObjects.users || {};
                 Object.values(node.globalObjects.tweets).forEach((t) => {
                     if (!t || typeof t !== 'object') return;
+                    const u = users[t.user_id_str] || {};
+                    const tCtx = {
+                        tweetId: t.id_str || '',
+                        authorName: u.name || '',
+                        screenName: u.screen_name || '',
+                        fullText: t.full_text || t.text || ''
+                    };
                     const media = t.extended_entities?.media || t.entities?.media;
-                    if (media) {
-                        const u = users[t.user_id_str] || {};
-                        ingestTweetMedia(
-                            t.id_str,
-                            u.name || '',
-                            u.screen_name || '',
-                            t.full_text || t.text || '',
-                            media,
-                            t.favorite_count
-                        );
-                    }
+                    if (Array.isArray(media)) media.forEach((m, i) => ingestSingleMedia(m, tCtx, i));
                 });
             }
 
-            // 處理 GraphQL Tweet 物件
+            // 累積目前分支上的推文／作者資訊
+            let nextCtx = ctx;
             const tweetObj = node.__typename === 'TweetWithVisibilityResults' && node.tweet ? node.tweet : node;
             if (tweetObj && tweetObj.legacy && typeof tweetObj.legacy === 'object') {
                 const leg = tweetObj.legacy;
-                const media = leg.extended_entities?.media || leg.entities?.media;
-                if (Array.isArray(media) && media.length > 0) {
-                    const user = extractUserFields(tweetObj.core?.user_results || tweetObj.author_results);
-                    const fullText = tweetObj.note_tweet?.note_tweet_results?.result?.text || leg.full_text || leg.text || '';
-                    ingestTweetMedia(
-                        tweetObj.rest_id || leg.id_str || '',
-                        user.name,
-                        user.screenName,
-                        fullText,
-                        media,
-                        leg.favorite_count
-                    );
-                }
+                const u = extractUserFields(tweetObj.core?.user_results || tweetObj.author_results || tweetObj.user_results);
+                const fullText = tweetObj.note_tweet?.note_tweet_results?.result?.text || leg.full_text || leg.text || ctx.fullText || '';
+                nextCtx = {
+                    tweetId: tweetObj.rest_id || leg.id_str || ctx.tweetId || '',
+                    authorName: u.authorName || ctx.authorName || '',
+                    screenName: u.screenName || ctx.screenName || '',
+                    fullText
+                };
+            } else if (node.id_str && (node.full_text || node.text) && (node.extended_entities || node.entities)) {
+                nextCtx = {
+                    tweetId: node.id_str,
+                    authorName: ctx.authorName || '',
+                    screenName: ctx.screenName || '',
+                    fullText: node.full_text || node.text || ctx.fullText || ''
+                };
             }
 
-            for (const key of Object.keys(node)) {
-                const val = node[key];
+            // 只要節點本身帶有 video_info.variants 就直接收錄（不再限死欄位路徑）
+            if (node.video_info && Array.isArray(node.video_info.variants)) {
+                ingestSingleMedia(node, nextCtx, 0);
+            }
+
+            // 解析卡片內的 unified_card JSON 字串
+            if (node.key === 'unified_card' && typeof node.value?.string_value === 'string') {
+                try {
+                    walk(JSON.parse(node.value.string_value), depth + 1, nextCtx);
+                } catch {}
+            } else if (typeof node.unified_card?.string_value === 'string') {
+                try {
+                    walk(JSON.parse(node.unified_card.string_value), depth + 1, nextCtx);
+                } catch {}
+            }
+
+            const keys = Object.keys(node);
+            for (let i = 0; i < keys.length; i++) {
+                const val = node[keys[i]];
                 if (val && typeof val === 'object') {
-                    walk(val, depth + 1);
+                    walk(val, depth + 1, nextCtx);
                 }
             }
         };
 
-        walk(root, 0);
+        walk(root, 0, baseCtx);
     }
 
     function processApiText(text) {
-        if (!text || text.length < 40) return;
-        if (!text.includes('video_info') && !text.includes('animated_gif')) return;
+        if (typeof text !== 'string' || text.length < 40) return;
+        if (!text.includes('video_info') && !text.includes('animated_gif') && !text.includes('video.twimg.com')) return;
         try {
             const json = JSON.parse(text);
             extractMediaFromJson(json);
         } catch {}
     }
 
+    // 管道 1：主頁面 fetch + Response.prototype + XMLHttpRequest 全攔截
     function installApiHooks() {
-        const pageWin = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-        const targets = pageWin === window ? [window] : [pageWin, window];
+        if (!window.__xpRespHooked && window.Response?.prototype) {
+            const origJson = Response.prototype.json;
+            const origText = Response.prototype.text;
 
-        targets.forEach((win) => {
-            if (!win) return;
+            Response.prototype.json = function (...args) {
+                const promise = origJson.apply(this, args);
+                if (!this.__xpSkip && isCandidateApiUrl(this.url)) {
+                    promise.then((data) => {
+                        if (data && typeof data === 'object') extractMediaFromJson(data);
+                    }).catch(() => {});
+                }
+                return promise;
+            };
 
-            if (typeof win.fetch === 'function' && !win.__xpFetchHooked) {
-                const origFetch = win.fetch;
-                win.fetch = function (...args) {
-                    const promise = origFetch.apply(this, args);
-                    try {
-                        const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-                        if (isTargetApiUrl(reqUrl)) {
-                            promise.then((res) => {
-                                if (res && res.ok) {
-                                    res.clone().text().then(processApiText).catch(() => {});
-                                }
-                            }).catch(() => {});
-                        }
-                    } catch {}
-                    return promise;
-                };
-                win.__xpFetchHooked = true;
-            }
+            Response.prototype.text = function (...args) {
+                const promise = origText.apply(this, args);
+                if (!this.__xpSkip && isCandidateApiUrl(this.url)) {
+                    promise.then((txt) => processApiText(txt)).catch(() => {});
+                }
+                return promise;
+            };
 
-            if (win.XMLHttpRequest?.prototype && !win.XMLHttpRequest.prototype.__xpXhrHooked) {
-                const origOpen = win.XMLHttpRequest.prototype.open;
-                const origSend = win.XMLHttpRequest.prototype.send;
-                win.XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-                    this.__xpUrl = typeof url === 'string' ? url : String(url || '');
-                    return origOpen.call(this, method, url, ...rest);
-                };
-                win.XMLHttpRequest.prototype.send = function (...args) {
-                    if (isTargetApiUrl(this.__xpUrl)) {
-                        this.addEventListener('load', function () {
-                            try {
-                                if (this.responseType === 'json' && this.response) {
-                                    extractMediaFromJson(this.response);
-                                } else if ((!this.responseType || this.responseType === 'text') && this.responseText) {
-                                    processApiText(this.responseText);
-                                }
-                            } catch {}
-                        });
+            window.__xpRespHooked = true;
+        }
+
+        if (typeof window.fetch === 'function' && !window.__xpFetchHooked) {
+            const origFetch = window.fetch;
+            window.fetch = function (...args) {
+                const promise = origFetch.apply(this, args);
+                try {
+                    const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+                    if (isCandidateApiUrl(reqUrl)) {
+                        promise.then((res) => {
+                            if (res && res.ok) {
+                                const cloned = res.clone();
+                                cloned.__xpSkip = true;
+                                cloned.text().then(processApiText).catch(() => {});
+                            }
+                        }).catch(() => {});
                     }
-                    return origSend.apply(this, args);
-                };
-                win.XMLHttpRequest.prototype.__xpXhrHooked = true;
-            }
-        });
+                } catch {}
+                return promise;
+            };
+            window.__xpFetchHooked = true;
+        }
+
+        if (window.XMLHttpRequest?.prototype && !window.XMLHttpRequest.prototype.__xpXhrHooked) {
+            const origOpen = XMLHttpRequest.prototype.open;
+            const origSend = XMLHttpRequest.prototype.send;
+            XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+                this.__xpUrl = typeof url === 'string' ? url : String(url || '');
+                return origOpen.call(this, method, url, ...rest);
+            };
+            XMLHttpRequest.prototype.send = function (...args) {
+                if (isCandidateApiUrl(this.__xpUrl)) {
+                    this.addEventListener('load', function () {
+                        try {
+                            if (this.responseType === 'json' && this.response) {
+                                extractMediaFromJson(this.response);
+                            } else if ((!this.responseType || this.responseType === 'text') && this.responseText) {
+                                processApiText(this.responseText);
+                            }
+                        } catch {}
+                    });
+                }
+                return origSend.apply(this, args);
+            };
+            window.XMLHttpRequest.prototype.__xpXhrHooked = true;
+        }
     }
 
-    // 備援掃描：若在腳本載入前頁面已渲染完首批推文，嘗試從 React Fiber 讀取影片資訊
-    function scanDomViaReactFiber() {
+    // 管道 2：從 #react-root 尋找並讀取 X 的 Redux Store（無需重整即可拿到已載入推文）
+    function findReduxStore() {
+        if (cachedReduxStore && typeof cachedReduxStore.getState === 'function') {
+            return cachedReduxStore;
+        }
         try {
-            document.querySelectorAll('article[data-testid="tweet"], div[data-testid="videoPlayer"]').forEach((el) => {
+            const rootEl = document.getElementById('react-root') || document.querySelector('#react-root');
+            if (!rootEl) return null;
+            const reactKey = Object.keys(rootEl).find((k) => k.startsWith('__reactContainer$') || k.startsWith('__reactFiber$'));
+            let startFiber = reactKey ? rootEl[reactKey] : rootEl._reactRootContainer?._internalRoot?.current;
+            if (!startFiber) return null;
+
+            const queue = [startFiber];
+            const seen = new Set();
+            let steps = 0;
+
+            while (queue.length > 0 && steps < 700) {
+                const node = queue.shift();
+                if (!node || seen.has(node)) continue;
+                seen.add(node);
+                steps++;
+
+                const candidates = [
+                    node.memoizedProps?.store,
+                    node.pendingProps?.store,
+                    node.stateNode?.store,
+                    node.memoizedProps?.value?.store
+                ];
+                for (const st of candidates) {
+                    if (st && typeof st.getState === 'function' && typeof st.dispatch === 'function') {
+                        cachedReduxStore = st;
+                        return st;
+                    }
+                }
+                if (node.child) queue.push(node.child);
+                if (node.sibling) queue.push(node.sibling);
+            }
+        } catch {}
+        return null;
+    }
+
+    function scanReduxStore() {
+        const before = allMediaMap.size;
+        try {
+            if (window.__INITIAL_STATE__) {
+                extractMediaFromJson(window.__INITIAL_STATE__);
+            }
+            const store = findReduxStore();
+            if (!store) return allMediaMap.size - before;
+
+            const state = store.getState();
+            const tweets = state?.entities?.tweets?.entities;
+            const users = state?.entities?.users?.entities || {};
+
+            if (tweets && typeof tweets === 'object') {
+                Object.values(tweets).forEach((t) => {
+                    if (!t || typeof t !== 'object') return;
+                    if (cfg.blockAds && (t.promotedMetadata || t.adMetadata)) return;
+                    const u = users[t.user_id_str] || {};
+                    const ctx = {
+                        tweetId: t.id_str || '',
+                        authorName: u.name || '',
+                        screenName: u.screen_name || '',
+                        fullText: t.full_text || t.text || ''
+                    };
+                    const media = t.extended_entities?.media || t.entities?.media;
+                    if (Array.isArray(media)) {
+                        media.forEach((m, i) => ingestSingleMedia(m, ctx, i));
+                    }
+                    const unifiedStr = t.card?.binding_values?.unified_card?.string_value;
+                    if (typeof unifiedStr === 'string' && unifiedStr.includes('video_info')) {
+                        try { extractMediaFromJson(JSON.parse(unifiedStr), ctx); } catch {}
+                    }
+                });
+            }
+        } catch {}
+        return allMediaMap.size - before;
+    }
+
+    // 管道 3 & 4：深度掃描推文 / 播放器 React Fiber 與 DOM <video>
+    function scanDomAndFiber() {
+        const before = allMediaMap.size;
+        try {
+            document.querySelectorAll('article[data-testid="tweet"], div[data-testid="videoPlayer"], video').forEach((el) => {
+                if (el.closest('#xp-feed-overlay, #xp-float-panel')) return;
+
+                // 若 DOM <video> 本身是直連 MP4（如 GIF 或無 MSE 影片），直接補抓
+                if (el.tagName === 'VIDEO') {
+                    const src = el.currentSrc || el.src || el.querySelector('source')?.src || '';
+                    if (src && /^https?:\/\//i.test(src) && !src.startsWith('blob:')) {
+                        const article = el.closest('article[data-testid="tweet"]');
+                        const timeLink = article?.querySelector('a[href*="/status/"]')?.href || '';
+                        const tweetId = (timeLink.match(/\/status\/(\d+)/) || [])[1] || '';
+                        const screenName = (timeLink.match(/x\.com\/([^/]+)\/status\//) || [])[1] || '';
+                        const text = article?.querySelector('[data-testid="tweetText"]')?.textContent || '';
+                        const vw = el.videoWidth || 0;
+                        const vh = el.videoHeight || 0;
+                        registerMediaItem({
+                            id: `dom_${src.split('?')[0].slice(-36)}`,
+                            tweetId,
+                            authorName: screenName ? `@${screenName}` : 'X 用戶',
+                            screenName,
+                            authorUrl: screenName ? `https://x.com/${screenName}` : '',
+                            text: cleanTweetText(text),
+                            tweetUrl: timeLink || location.href,
+                            poster: el.poster || '',
+                            playUrl: src,
+                            previewUrl: /\.mp4(?:\?|$)/i.test(src) ? src : '',
+                            isGif: Boolean(el.loop && (!el.duration || el.duration < 15)),
+                            durationSec: Number.isFinite(el.duration) && el.duration > 0 ? Math.round(el.duration) : -1,
+                            durationText: Number.isFinite(el.duration) && el.duration > 0 ? formatSec(el.duration) : '',
+                            width: vw,
+                            height: vh,
+                            orientation: (vw > 0 && vh > 0) ? (vh > vw * 1.03 ? 'portrait' : 'landscape') : 'unknown'
+                        });
+                    }
+                }
+
                 const fiberKey = Object.keys(el).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactProps$'));
                 if (!fiberKey) return;
+
                 let cur = el[fiberKey];
-                for (let step = 0; step < 12 && cur; step++) {
-                    const props = cur.memoizedProps || cur;
+                for (let step = 0; step < 26 && cur; step++) {
+                    const props = cur.memoizedProps;
                     if (props && typeof props === 'object') {
-                        if (props.tweet && typeof props.tweet === 'object') {
-                            extractMediaFromJson(props.tweet);
-                        }
-                        if (props.media && props.media.video_info) {
-                            ingestTweetMedia(
-                                props.tweetId || '',
-                                '',
-                                '',
-                                '',
-                                [props.media]
-                            );
+                        const candidates = [props.tweet, props.media, props.mediaEntity, props.video, props.item, props.entry, props.source];
+                        for (const c of candidates) {
+                            if (c && typeof c === 'object') {
+                                if (c.video_info?.variants) {
+                                    ingestSingleMedia(c, {}, 0);
+                                } else if (c.legacy || c.extended_entities || c.entities || c.variants) {
+                                    extractMediaFromJson(c);
+                                }
+                            }
                         }
                     }
                     cur = cur.return;
                 }
             });
         } catch {}
+        return allMediaMap.size - before;
+    }
+
+    function scanAllPageSources() {
+        syncRouteKey();
+        const n1 = scanReduxStore();
+        const n2 = scanDomAndFiber();
+        updatePanelCounts();
+        return n1 + n2;
     }
 
     // ==================== 3. 廣告隱藏與篩選規則 ====================
@@ -1052,9 +1221,7 @@
             const cell = article.closest('div[data-testid="cellInnerDiv"]') || article;
             if (cell.classList.contains('xp-ad-hidden')) return;
 
-            // 真實推文皆有 <time> 時間戳；推廣廣告通常沒有 <time> 且帶有「Ad / 廣告 / Promoted」標記
-            const hasTimestamp = Boolean(article.querySelector('time'));
-            if (hasTimestamp) return;
+            if (article.querySelector('time')) return;
 
             let isAd = Boolean(article.querySelector('a[href*="/i/ads"], a[href*="business.x.com"]'));
             if (!isAd) {
@@ -1153,18 +1320,18 @@
         } catch {
             window.scrollBy(0, Math.max(900, window.innerHeight * 1.5));
         }
+        setTimeout(() => {
+            if (feedOpen) scanAllPageSources();
+        }, 900);
     }
 
     function openFeedMode(startIdx = 0) {
         if (feedOpen) return;
-        syncRouteKey();
-        if (getFilteredPool().length === 0) {
-            scanDomViaReactFiber();
-        }
+        scanAllPageSources();
 
         const initialList = getFilteredPool();
         if (initialList.length === 0) {
-            showToast('⚠️ 目前尚未收集到符合條件的影片，請先稍微往下滑動頁面或放寬篩選', 3000);
+            showToast('⚠️ 目前尚未掃到符合條件的影片，請先往下滑過影片貼文或放寬篩選條件', 3200);
             return;
         }
 
@@ -1280,7 +1447,6 @@
             }
         };
 
-        // ==================== 快轉畫面預覽引擎 ====================
         const resetPreviewMedia = () => {
             clearTimeout(previewSeekTimer);
             previewSeekTimer = null;
@@ -1435,7 +1601,7 @@
 
         const syncBottomDockToItem = (item, realW = 0, realH = 0) => {
             if (!item) return;
-            const handleStr = item.screenName ? ` @${item.screenName}` : '';
+            const handleStr = item.screenName && !item.authorName.includes(`@${item.screenName}`) ? ` @${item.screenName}` : '';
             authorEl.textContent = `${item.authorName}${handleStr}`;
             authorEl.href = item.authorUrl || item.tweetUrl || '#';
 
@@ -1583,7 +1749,6 @@
             drawerGrid.appendChild(frag);
         };
 
-        // 監聽背景 GraphQL 持續攔截到的新影片，即時加入抖音軌道
         feedOnNewMedia = (newItem) => {
             if (!feedOpen || feedIdSet.has(newItem.id) || !matchesFilters(newItem)) return;
             feedIdSet.add(newItem.id);
@@ -1644,7 +1809,6 @@
                 tryPlayVideo(video);
             }
 
-            // 接近尾端時在背景自動捲動 X 載入下一批推文
             if (idx >= feedItems.length - 3) {
                 triggerBackgroundScrollLoad();
             }
@@ -1675,7 +1839,6 @@
             goToSlide(keepIdx >= 0 ? keepIdx : 0);
         };
 
-        // 進度條拖曳與滑鼠懸停畫面預覽
         const calcRangeThumbX = (ratio) => {
             const rect = rangeEl.getBoundingClientRect();
             return rect.left + Math.max(0, Math.min(1, ratio)) * rect.width;
@@ -1802,7 +1965,6 @@
             showFeedHud(`已切換：${orientLabel(cfg.orientation)}`, 1000);
         });
 
-        // 觸控滑動手勢（上下滑切集 / 左右滑快轉預覽 / 單擊暫停 / 雙擊±10s）
         let tStartX = 0, tStartY = 0, gestureMode = null, scrubStartTime = 0, lastTapTs = 0;
 
         track.addEventListener('touchstart', (e) => {
@@ -2064,7 +2226,10 @@
                 </div>
             </div>
             <div class="xp-panel-body">
-                <button type="button" id="xp-btn-feed" class="xp-btn accent" style="width:100%;padding:8px;font-size:13px;">🎬 進入抖音模式 (0)</button>
+                <div class="xp-top-action-row">
+                    <button type="button" id="xp-btn-feed" class="xp-btn accent" style="flex:1;padding:8px;font-size:13px;">🎬 進入抖音模式 (0)</button>
+                    <button type="button" id="xp-btn-rescan" class="xp-btn" style="padding:8px 10px;" title="立即重新掃描目前頁面影片">🔄 重掃</button>
+                </div>
 
                 <div class="xp-section">
                     <div class="xp-section-title">
@@ -2098,12 +2263,11 @@
                     </div>
                 </div>
 
-                <div id="xp-stats-line" class="xp-stats-line">滑動頁面即可自動收集影片...</div>
+                <div id="xp-stats-line" class="xp-stats-line">正在掃描本頁影片...</div>
             </div>
         `;
         document.body.appendChild(panel);
 
-        // 拖曳移動浮動面板
         const head = panel.querySelector('#xp-panel-head');
         let dragging = false, sx = 0, sy = 0, ol = 0, ot = 0;
         head.addEventListener('pointerdown', (e) => {
@@ -2126,6 +2290,12 @@
 
         panel.querySelector('#xp-btn-feed').addEventListener('click', () => openFeedMode(0));
         panel.querySelector('#xp-btn-feed-mini').addEventListener('click', () => openFeedMode(0));
+
+        panel.querySelector('#xp-btn-rescan').addEventListener('click', () => {
+            const added = scanAllPageSources();
+            const matched = getFilteredPool().length;
+            showToast(matched > 0 ? `✅ 已掃描完成：目前可播 ${matched} 部（本次新增 ${added} 部）` : '⚠️ 目前頁面尚未載入影片，請先往下滑過幾則影片貼文再試');
+        });
 
         panel.querySelector('#xp-panel-toggle').addEventListener('click', () => {
             cfg.panelCollapsed = !cfg.panelCollapsed;
@@ -2220,23 +2390,39 @@
             setTimeout(boot, 50);
             return;
         }
+        injectBaseStyles();
         createFloatingPanel();
         hidePromotedTweets();
-        setTimeout(() => {
-            if (getCurrentRouteBucket().size === 0) scanDomViaReactFiber();
-            updatePanelCounts();
-        }, 1200);
+        scanAllPageSources();
+
+        setTimeout(scanAllPageSources, 1200);
+        setTimeout(scanAllPageSources, 3000);
 
         let lastHref = location.href;
+        let lastScrollScanTs = 0;
+
+        window.addEventListener('scroll', () => {
+            if (feedOpen) return;
+            const now = Date.now();
+            if (now - lastScrollScanTs > 1200) {
+                lastScrollScanTs = now;
+                scanAllPageSources();
+            }
+        }, { passive: true });
+
         setInterval(() => {
             if (location.href !== lastHref) {
                 lastHref = location.href;
                 syncRouteKey();
+                setTimeout(scanAllPageSources, 800);
             }
             if (!feedOpen && !document.hidden) {
                 hidePromotedTweets();
+                if (getCurrentRouteBucket().size === 0) {
+                    scanReduxStore();
+                }
             }
-        }, 1000);
+        }, 1200);
 
         let mutTimer = null;
         const obs = new MutationObserver(() => {
